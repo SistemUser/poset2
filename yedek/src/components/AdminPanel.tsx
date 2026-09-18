@@ -314,7 +314,7 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
   const fetchProducts = async () => {
     setLoadingProducts(true);
     try {
-      const res = await fetch(getApiEndpoint(`api/products?t=${Date.now()}`), { cache: "no-store" });
+      const res = await fetch(getApiEndpoint("api/products"));
       if (res.ok) {
         const data: DbProduct[] = await res.json();
         if (Array.isArray(data) && data.length > 0) {
@@ -602,11 +602,6 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
       moq: (formData.moq || "").replace(/[^0-9.]/g, "").trim() || "5.000"
     } as DbProduct;
 
-    if (numPrice > 0) {
-      finalProd.fiyat_aliniz = false;
-      finalProd.isPremiumPrice = false;
-    }
-
     try {
       const url = isEdit 
         ? getApiEndpoint(`api/admin/products/${encodeURIComponent(editingProduct.urun_kodu)}`) 
@@ -657,7 +652,7 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
 
     // 2. Sync deletion to server
     try {
-      await fetch(getApiEndpoint(`api/admin/products/${encodeURIComponent(targetCode)}`), {
+      await fetch(`/api/admin/products/${encodeURIComponent(targetCode)}`, {
         method: "DELETE"
       });
     } catch (err) {
@@ -936,15 +931,12 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
   const categoriesList = useMemo(() => {
     const set = new Set<string>();
     if (Array.isArray(categories)) {
-      categories.forEach((c: any) => {
-        const name = typeof c === "string" ? c : c?.name;
-        if (name && typeof name === "string" && name.trim()) {
-          set.add(name.trim());
-        }
+      categories.forEach(c => {
+        if (c && typeof c === "string" && c.trim()) set.add(c.trim());
       });
     }
     if (Array.isArray(products)) {
-      products.forEach((p: any) => {
+      products.forEach(p => {
         if (p.urun_kategorisi && typeof p.urun_kategorisi === "string" && p.urun_kategorisi.trim()) {
           set.add(p.urun_kategorisi.trim());
         }

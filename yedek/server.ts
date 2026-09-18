@@ -2664,27 +2664,11 @@ app.put([
       urun_kodu: req.body.urun_kodu || products[index].urun_kodu,
       birim_fiyat: finalPrice,
       birim_fiyati: finalPrice,
-      // KRİTİK: Fiyat > 0 ise fiyat_aliniz bayrağını ve isPremiumPrice bayrağını kesinlikle FALSE yap
-      fiyat_aliniz: finalPrice > 0 ? false : (req.body.fiyat_aliniz ?? true),
-      isPremiumPrice: finalPrice > 0 ? false : (req.body.isPremiumPrice ?? false)
+      // KRİTİK: Fiyat > 0 ise fiyat_aliniz bayrağını kesinlikle FALSE yap
+      fiyat_aliniz: finalPrice > 0 ? false : (req.body.fiyat_aliniz ?? true)
     };
 
-    if (finalPrice > 0) {
-      updatedProd.fiyat_aliniz = false;
-      updatedProd.isPremiumPrice = false;
-    }
-
     products[index] = updatedProd;
-
-    // Strip out remaining isPremiumPrice: true flags for priced items in array
-    for (const p of products) {
-      const pPrice = Number(p.birim_fiyat ?? p.birim_fiyati) || 0;
-      if (pPrice > 0) {
-        p.fiyat_aliniz = false;
-        p.isPremiumPrice = false;
-      }
-    }
-
     await safeWriteJson(productsFilePath, products);
 
     console.log(`[Ürün Fiyatı Güncellendi] SKU: ${updatedProd.urun_kodu} -> ₺${finalPrice} (fiyat_aliniz: ${updatedProd.fiyat_aliniz})`);
@@ -2958,16 +2942,8 @@ async function ensureCategoriesSeeded() {
   const categoriesFilePath = path.join(process.cwd(), 'data', 'categories.json');
   if (fs.existsSync(categoriesFilePath) && fs.statSync(categoriesFilePath).size > 0) {
     let currentCats = await safeReadJson<any[]>(categoriesFilePath, []);
-    if (Array.isArray(currentCats) && currentCats.length > 0) {
-      const filtered = currentCats.filter((c: any) => {
-        const catName = typeof c === 'string' ? c : (c?.name || '');
-        const lower = catName.toLowerCase().trim();
-        return lower !== 'test2' && lower !== 'testt' && !lower.includes('test2') && !lower.includes('testt');
-      });
-      if (filtered.length !== currentCats.length) {
-        await safeWriteJson(categoriesFilePath, filtered);
-      }
-      return filtered;
+    if (Array.isArray(currentCats) && currentCats.length > 0 && typeof currentCats[0] === 'object') {
+      return currentCats;
     }
   }
   await safeWriteJson(categoriesFilePath, DEFAULT_CATEGORY_SCHEMAS);

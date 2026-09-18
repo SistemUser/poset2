@@ -1,0 +1,6 @@
+{
+  "name": "Poset Industrial",
+  "description": "Yapay zeka destekli akıllı endüstriyel ambalaj ve plastik poşet fiyatlandırma platformu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

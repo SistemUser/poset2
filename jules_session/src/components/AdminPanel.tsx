@@ -936,15 +936,12 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
   const categoriesList = useMemo(() => {
     const set = new Set<string>();
     if (Array.isArray(categories)) {
-      categories.forEach((c: any) => {
-        const name = typeof c === "string" ? c : c?.name;
-        if (name && typeof name === "string" && name.trim()) {
-          set.add(name.trim());
-        }
+      categories.forEach(c => {
+        if (c && typeof c === "string" && c.trim()) set.add(c.trim());
       });
     }
     if (Array.isArray(products)) {
-      products.forEach((p: any) => {
+      products.forEach(p => {
         if (p.urun_kategorisi && typeof p.urun_kategorisi === "string" && p.urun_kategorisi.trim()) {
           set.add(p.urun_kategorisi.trim());
         }

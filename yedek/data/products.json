@@ -6,7 +6,7 @@
     "urun_adi": "Baskılı (Logolu) Kargo Poşetleri",
     "olculer": "20 x 30 + 5 (Kapak)",
     "satis_sekli": "Adet",
-    "moq": "5.000",
+    "moq": "5.000 Adet",
     "fiyat_carpanlari": "5k:1.00 / 10k:0.92 / 25k:0.85",
     "hammadde_turu": "Co-Ex (LDPE)",
     "kalinlik_seviyesi": "65 Mikron",
@@ -24,10 +24,10 @@
     "kullanim_amaci": "Güvenli kargo ve e-ticaret lojistik sevkiyatı",
     "stok_durumu": "Siparişle",
     "para_birimi": "USD",
-    "birim_fiyati": 1.85,
-    "isPremiumPrice": false,
-    "birim_fiyat": 1.85,
-    "fiyat_aliniz": false
+    "birim_fiyati": 0,
+    "isPremiumPrice": true,
+    "birim_fiyat": 0,
+    "fiyat_aliniz": true
   },
   {
     "sira_no": 2,
@@ -1435,7 +1435,7 @@
     "stok_durumu": "Siparişle",
     "para_birimi": "TL",
     "birim_fiyati": 250,
-    "isPremiumPrice": false,
+    "isPremiumPrice": true,
     "birim_fiyat": 250,
     "fiyat_aliniz": false
   },

@@ -78,22 +78,33 @@
     }
   },
   {
-    "id": "kat_1789705822304",
-    "name": "kat-0001",
-    "slug": "k",
+    "id": "cat-1789698513190",
+    "name": "test2",
     "units": [
       "Adet"
     ],
-    "thickness_unit": "Mikron",
     "thickness": "Mikron",
-    "default_moq": 1000,
     "fields": {
       "kargo_bant": false,
       "kulp": true,
       "koruk": true,
       "irsaliye_cebi": false,
       "baski": true
-    },
-    "allowed_materials": []
+    }
+  },
+  {
+    "id": "cat-1789699001209",
+    "name": "testt",
+    "units": [
+      "Adet"
+    ],
+    "thickness": "Mikron",
+    "fields": {
+      "kargo_bant": false,
+      "kulp": true,
+      "koruk": true,
+      "irsaliye_cebi": false,
+      "baski": true
+    }
   }
 ]

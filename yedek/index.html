@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ambalaj Market San. Tic. Ltd. Şti.</title>
+    <meta name="description" content="Ambalaj Market - Baskılı kargo poşetleri, mağaza poşetleri, market poşetleri ve endüstriyel ambalaj çözümleri üreticisi. Türkiye'nin ambalaj çözüm merkezi." />
+    <script>
+      (function() {
+        try {
+          var originalParse = JSON.parse;
+          JSON.parse = function(text, reviver) {
+            if (text === undefined || text === "undefined" || text === "" || text === null) {
+              console.warn("Intercepted JSON.parse of undefined/null/empty value inside preview.");
+              return null;
+            }
+            if (typeof text === 'string') {
+              var trimmed = text.trim();
+              if (trimmed === 'undefined' || trimmed === '') {
+                console.warn("Intercepted JSON.parse of trimmed undefined/empty string.");
+                return null;
+              }
+            }
+            try {
+              return originalParse(text, reviver);
+            } catch (err) {
+              if (typeof text === 'string' && text.indexOf('undefined') !== -1) {
+                console.warn("Intercepted JSON.parse containing undefined in string context.");
+                return null;
+              }
+              throw err;
+            }
+          };
+
+          var originalFetch = window.fetch;
+          var currentFetch = originalFetch;
+          Object.defineProperty(window, 'fetch', {
+            get: function() {
+              return currentFetch;
+            },
+            set: function(val) {
+              console.warn("Intercepted fetch setter to prevent TypeError:", val);
+              currentFetch = val;
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {
+          console.warn("Could not redefine global window structures.", e);
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

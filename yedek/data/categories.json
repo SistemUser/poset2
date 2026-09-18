@@ -76,24 +76,5 @@
       "koruk": false,
       "baski": false
     }
-  },
-  {
-    "id": "kat_1789705822304",
-    "name": "kat-0001",
-    "slug": "k",
-    "units": [
-      "Adet"
-    ],
-    "thickness_unit": "Mikron",
-    "thickness": "Mikron",
-    "default_moq": 1000,
-    "fields": {
-      "kargo_bant": false,
-      "kulp": true,
-      "koruk": true,
-      "irsaliye_cebi": false,
-      "baski": true
-    },
-    "allowed_materials": []
   }
 ]

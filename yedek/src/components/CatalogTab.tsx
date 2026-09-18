@@ -97,8 +97,6 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
         const rawLabel = typeof catItem === "string" ? catItem : (catItem && typeof catItem === "object" && catItem.name ? catItem.name : "");
         if (!rawLabel || typeof rawLabel !== "string" || !rawLabel.trim()) return;
         const label = rawLabel.trim();
-        const lowerLabel = label.toLowerCase();
-        if (lowerLabel === "test2" || lowerLabel === "testt" || lowerLabel.includes("test2") || lowerLabel.includes("testt")) return;
         const key = CATEGORY_LABEL_TO_KEY[label] || label;
         if (!map.has(key)) {
           map.set(key, { key, label, count: 0 });
@@ -274,7 +272,7 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
 
     const getPriceVal = (prod: TaxonomyProduct) => {
       const v = prod.variants?.[0];
-      const dbProd = dbProducts.find(p => Boolean(p.urun_kodu) && Boolean(v?.urun_kodu) && p.urun_kodu === v?.urun_kodu);
+      const dbProd = dbProducts.find(p => p.urun_kodu === v?.urun_kodu);
       const p = dbProd?.birim_fiyat ?? dbProd?.birim_fiyati ?? v?.birim_fiyati ?? prod.birim_fiyati ?? 0;
       return Number(p) || 0;
     };
@@ -306,7 +304,7 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
   const handleAddAction = (prod: TaxonomyProduct) => {
     // Adapter conversion to general shape
     const activeVariant = prod.variants.find(v => v.urun_kodu === (selectedVariantCodes[prod.id] || prod.variants[0].urun_kodu)) || prod.variants[0];
-    const liveDb = dbProducts.find(p => Boolean(p.urun_kodu) && Boolean(activeVariant.urun_kodu) && p.urun_kodu === activeVariant.urun_kodu);
+    const liveDb = dbProducts.find(p => p.urun_kodu === activeVariant.urun_kodu);
     const unitP = Number(liveDb?.birim_fiyat ?? liveDb?.birim_fiyati ?? activeVariant.birim_fiyati) || 0;
     const isQuote = liveDb?.fiyat_aliniz === true || unitP === 0;
 
@@ -525,9 +523,12 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
                 const activeVariantCode = selectedVariantCodes[prod.id] || prod.variants[0].urun_kodu;
                 const activeVariant = prod.variants.find(v => v.urun_kodu === activeVariantCode) || prod.variants[0];
                 
-                // Live override from Admin Panel / dbProducts - strictly match by urun_kodu
+                // Live override from Admin Panel / dbProducts
                 const liveDbProd = dbProducts.find(p => 
-                  Boolean(p.urun_kodu) && Boolean(activeVariant.urun_kodu) && p.urun_kodu === activeVariant.urun_kodu
+                  p.urun_kodu === activeVariant.urun_kodu || 
+                  (p as any).sku === (activeVariant as any).sku || 
+                  p.urun_kodu === (activeVariant as any).sku ||
+                  ((p as any).urun_adi === prod.name && p.olculer === activeVariant.olculer)
                 );
                 const rawPrice = liveDbProd?.birim_fiyat ?? liveDbProd?.birim_fiyati ?? (activeVariant as any)?.birim_fiyat ?? activeVariant?.birim_fiyati ?? 0;
                 const effectivePrice = typeof rawPrice === 'number' ? rawPrice : (parseFloat(String(rawPrice).replace(',', '.')) || 0);
@@ -540,7 +541,7 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
                 const priceTiers = parsePriceMultipliers(fiyatCarpanlariStr, satisSekli);
                 const currentMultiplier = selectedMultipliers[prod.id] !== undefined ? selectedMultipliers[prod.id] : (priceTiers[0]?.multiplier || 1.0);
                 const finalUnitPrice = effectivePrice * currentMultiplier;
-                const isQuoteOnly = !finalUnitPrice || finalUnitPrice <= 0 || isNaN(finalUnitPrice);
+                const isQuoteOnly = finalUnitPrice <= 0;
 
                 return (
                   <div 
