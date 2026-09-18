@@ -1,0 +1,42 @@
+# Apache / LiteSpeed Configuration for PHP 8.3 & React SPA (Subfolder Compatible)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # API Admin endpoints forwarding to admin.php
+    RewriteRule ^api/admin/refresh-rate$ api/admin.php?action=refresh-rate [L,QSA]
+    RewriteRule ^api/admin/settings$ api/admin.php?action=settings [L,QSA]
+    RewriteRule ^api/admin/products(.*)$ api/admin.php?action=products [L,QSA]
+    RewriteRule ^api/admin/categories(.*)$ api/admin.php?action=categories [L,QSA]
+    RewriteRule ^api/admin/multiplier-templates(.*)$ api/admin.php?action=multiplier-templates [L,QSA]
+
+    # API Quote endpoint forwarding
+    RewriteRule ^api/quote$ api/quote.php [L,QSA]
+
+    # Allow direct access to existing files and directories
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Route all frontend SPA requests to index.html in current directory
+    RewriteRule ^ index.html [L]
+</IfModule>
+
+# Security Rule: Deny direct access to JSON database files and backups
+<Files "*.json">
+    Require all denied
+</Files>
+<Files "*.bak">
+    Require all denied
+</Files>
+
+# Set UTF-8 default charset
+<IfModule mod_mime.c>
+    AddDefaultCharset UTF-8
+</IfModule>
+
+# Security & CORS Headers
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type, Authorization"
+</IfModule>
