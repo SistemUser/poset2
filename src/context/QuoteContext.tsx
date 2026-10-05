@@ -103,11 +103,11 @@ export function generateWhatsAppQuoteText(
     }
 
     if (item.logo_dosya_adi) {
-      text += `   📎 *EKLİ LOGO / TASARIM:* ${item.logo_dosya_adi}\n`;
+      text += `   • *EKLİ LOGO / TASARIM:* ${item.logo_dosya_adi}\n`;
     }
 
     if (item.musteri_notu) {
-      text += `   🔴 *ÖZEL MÜŞTERİ NOTU:* ${item.musteri_notu}\n`;
+      text += `   • *ÖZEL MÜŞTERİ NOTU:* ${item.musteri_notu}\n`;
     }
     text += `\n`;
   });
@@ -128,7 +128,7 @@ export function generateWhatsAppQuoteText(
   }
 
   if (customer.note) {
-    text += `🔴 *GENEL MÜŞTERİ NOTU:* ${customer.note}\n`;
+    text += `• *MÜŞTERİ NOTU:* ${customer.note}\n`;
   }
 
   text += `\n_Bu teklif talebi poset.com üzerinden oluşturulmuştur._`;
