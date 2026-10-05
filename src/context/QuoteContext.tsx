@@ -69,12 +69,12 @@ export function generateWhatsAppQuoteText(
   const timeStr = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
   const activeSettings = settings || getStoredRfqSettings();
 
-  let text = `📦 *AMBALAJ MARKET - FİYAT TEKLİFİ VE SİPARİŞ TALEBİ*\n`;
-  text += `📅 *Tarih:* ${dateStr} ${timeStr}\n`;
+  let text = `*AMBALAJ MARKET - FİYAT TEKLİFİ VE SİPARİŞ TALEBİ*\n`;
+  text += `• *Tarih:* ${dateStr} ${timeStr}\n`;
   text += `───────────────────────\n`;
 
   if (customer.name || customer.company || customer.phone || customer.email || customer.monthlyConsumption) {
-    text += `👤 *MÜŞTERİ BİLGİLERİ*\n`;
+    text += `*MÜŞTERİ BİLGİLERİ*\n`;
     if (customer.name) text += `• *Yetkili:* ${customer.name}\n`;
     if (customer.company) text += `• *Firma / Marka:* ${customer.company}\n`;
     if (customer.phone) text += `• *Telefon:* ${customer.phone}\n`;
@@ -83,7 +83,7 @@ export function generateWhatsAppQuoteText(
     text += `───────────────────────\n`;
   }
 
-  text += `📋 *TALEP EDİLEN ÜRÜNLER (${items.length} Kalem):*\n\n`;
+  text += `*TALEP EDİLEN ÜRÜNLER (${items.length} Kalem):*\n\n`;
 
   items.forEach((item, index) => {
     text += `*${index + 1}. ${item.urun_adi}*\n`;
@@ -114,17 +114,17 @@ export function generateWhatsAppQuoteText(
 
   text += `───────────────────────\n`;
   if (totalPrice > 0) {
-    text += `💰 *TOPLAM TAHMİNİ TUTAR:* ₺${totalPrice.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} (${taxNote})\n`;
+    text += `*TOPLAM TAHMİNİ TUTAR:* ₺${totalPrice.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} (${taxNote})\n`;
   } else {
-    text += `💰 *TOPLAM TAHMİNİ TUTAR:* Özel İmalat / Teklif İle Belirlenecektir (${taxNote})\n`;
+    text += `*TOPLAM TAHMİNİ TUTAR:* Özel İmalat / Teklif İle Belirlenecektir (${taxNote})\n`;
   }
 
   if (validityNote) {
-    text += `ℹ️ *Teklif Notu:* ${validityNote}\n`;
+    text += `• *Teklif Notu:* ${validityNote}\n`;
   }
 
   if (customer.note) {
-    text += `💬 *Müşteri Notu:* ${customer.note}\n`;
+    text += `• *Müşteri Notu:* ${customer.note}\n`;
   }
 
   text += `\n_Bu teklif talebi poset.com üzerinden oluşturulmuştur._`;

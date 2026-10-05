@@ -126,9 +126,23 @@ function sendSmtpEmail($to, $subject, $body, $replyToEmail = '') {
 }
 
 if (isset($input['action']) && $input['action'] === 'submit_rfq') {
+    $settingsFile = __DIR__ . '/data/settings.json';
+    if (!file_exists($settingsFile)) {
+        $settingsFile = dirname(__DIR__, 2) . '/data/settings.json';
+    }
+    $savedSettings = [];
+    if (file_exists($settingsFile)) {
+        $savedSettings = json_decode(file_get_contents($settingsFile), true) ?: [];
+    }
+
     $to = !empty($input['recipient_email']) && filter_var($input['recipient_email'], FILTER_VALIDATE_EMAIL)
         ? $input['recipient_email']
-        : (getenv('SMTP_RECIPIENT') ?: 'info@poset.com');
+        : (!empty($savedSettings['notificationEmail'])
+            ? $savedSettings['notificationEmail']
+            : (!empty($savedSettings['smtp']['fromEmail'])
+                ? $savedSettings['smtp']['fromEmail']
+                : (getenv('SMTP_RECIPIENT') ?: 'info@reksa.net')));
+
     $customer = isset($input['customer']) ? $input['customer'] : [];
     $items = isset($input['items']) ? $input['items'] : [];
 
@@ -137,51 +151,84 @@ if (isset($input['action']) && $input['action'] === 'submit_rfq') {
     $custCompany = isset($customer['company']) ? htmlspecialchars($customer['company']) : 'Belirtilmedi';
     $custEmail = isset($customer['email']) ? htmlspecialchars($customer['email']) : 'Belirtilmedi';
     $custMonthly = isset($customer['monthlyConsumption']) ? htmlspecialchars($customer['monthlyConsumption']) : 'Belirtilmedi';
+    $custNote = isset($customer['notes']) ? htmlspecialchars($customer['notes']) : (isset($customer['note']) ? htmlspecialchars($customer['note']) : 'Belirtilmedi');
+    $taxNoteText = isset($input['tax_note']) ? htmlspecialchars($input['tax_note']) : 'KDV Hariç';
+    $validityNoteText = isset($input['validity_note']) ? htmlspecialchars($input['validity_note']) : 'Fiyatlarımız 15 gün geçerlidir.';
 
     $subject = "Yeni Teklif Talebi (poset.com) - " . $custName;
 
-    $body = "<html><head><style>";
-    $body .= "body { font-family: Arial, sans-serif; color: #333; }";
-    $body .= "table { width: 100%; border-collapse: collapse; margin-top: 15px; }";
-    $body .= "th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }";
-    $body .= "th { background-color: #0b1c3f; color: white; }";
-    $body .= "</style></head><body>";
-    $body .= "<h2 style='color:#0b1c3f;'>Yeni Fiyat Teklifi Talebi</h2>";
-    $body .= "<h3>Teklif Sahibinin Bilgileri</h3>";
-    $body .= "<ul>";
-    $body .= "<li><strong>Adı Soyadı:</strong> {$custName}</li>";
-    $body .= "<li><strong>Firma / Marka:</strong> {$custCompany}</li>";
-    $body .= "<li><strong>Telefon:</strong> {$custPhone}</li>";
-    $body .= "<li><strong>E-posta:</strong> {$custEmail}</li>";
-    $body .= "<li><strong>Aylık Ortalama Tüketim:</strong> {$custMonthly}</li>";
-    $body .= "</ul>";
+    $body = "<html><head><meta charset='utf-8'><style>"
+          . "body { font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; background: #f8fafc; padding: 20px; }"
+          . ".card { max-width: 750px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }"
+          . ".header { background: #0b1c3f; color: #ffffff; padding: 24px; text-align: left; }"
+          . ".header h2 { margin: 0 0 6px 0; font-size: 20px; letter-spacing: -0.5px; }"
+          . ".header p { margin: 0; font-size: 13px; color: #94a3b8; }"
+          . ".content { padding: 24px; }"
+          . ".section-title { font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; color: #0b1c3f; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; margin: 20px 0 12px 0; }"
+          . ".info-grid { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; }"
+          . ".info-grid td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }"
+          . ".info-label { font-weight: bold; color: #64748b; width: 180px; }"
+          . ".info-val { color: #0f172a; font-weight: 600; }"
+          . "table.items { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }"
+          . "table.items th { background: #0b1c3f; color: #ffffff; padding: 10px 8px; text-align: left; font-size: 11px; text-transform: uppercase; }"
+          . "table.items td { border-bottom: 1px solid #e2e8f0; padding: 10px 8px; vertical-align: top; }"
+          . "table.items tr:nth-child(even) { background-color: #f8fafc; }"
+          . ".total-box { margin-top: 20px; padding: 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; }"
+          . ".total-title { font-size: 16px; font-weight: bold; color: #166534; }"
+          . ".footer { padding: 16px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }"
+          . "</style></head><body>"
+          . "<div class='card'>"
+          . "<div class='header'><h2>AMBALAJ MARKET - FİYAT TEKLİFİ VE SİPARİŞ TALEBİ</h2><p>Tarih & Saat: " . date('d.m.Y H:i') . "</p></div>"
+          . "<div class='content'>"
+          . "<div class='section-title'>MÜŞTERİ BİLGİLERİ</div>"
+          . "<table class='info-grid'>"
+          . "<tr><td class='info-label'>Yetkili / Adı Soyadı:</td><td class='info-val'>{$custName}</td></tr>"
+          . "<tr><td class='info-label'>Firma / Marka:</td><td class='info-val'>{$custCompany}</td></tr>"
+          . "<tr><td class='info-label'>Telefon Numarası:</td><td class='info-val'>{$custPhone}</td></tr>"
+          . "<tr><td class='info-label'>E-Posta Adresi:</td><td class='info-val'>{$custEmail}</td></tr>"
+          . "<tr><td class='info-label'>Aylık Tüketim Potansiyeli:</td><td class='info-val'>{$custMonthly}</td></tr>";
 
-    $body .= "<h3>Talep Edilen Ürünler</h3>";
-    $body .= "<table>";
-    $body .= "<tr><th>Ürün Adı</th><th>SKU</th><th>Ölçü</th><th>Miktar</th><th>Baskı / Detay</th><th>Tahmini Tutar</th></tr>";
+    if ($custNote !== 'Belirtilmedi') {
+        $body .= "<tr><td class='info-label'>Müşteri Notu:</td><td class='info-val'>{$custNote}</td></tr>";
+    }
+
+    $itemCount = is_array($items) ? count($items) : 0;
+    $body .= "</table><div class='section-title'>TALEP EDİLEN ÜRÜNLER ({$itemCount} KALEM)</div>"
+          . "<table class='items'>"
+          . "<tr><th>#</th><th>Ürün Adı</th><th>Ölçü</th><th>Miktar</th><th>Hammadde</th><th>Baskı / Cep</th><th>Stok/Üretim</th><th>Birim Fiyat</th><th>Tutar</th></tr>";
     
     $grandTotal = 0;
     if (is_array($items)) {
-        foreach ($items as $item) {
+        foreach ($items as $idx => $item) {
             $uName = htmlspecialchars($item['urun_adi'] ?? '');
-            $uCode = htmlspecialchars($item['urun_kodu'] ?? '');
+            $uCode = !empty($item['urun_kodu']) ? " (" . htmlspecialchars($item['urun_kodu']) . ")" : "";
             $uDim = htmlspecialchars($item['olculer'] ?? '');
             $uQty = number_format($item['miktar'] ?? 0) . " " . htmlspecialchars($item['satis_sekli'] ?? 'Adet');
-            $uPrint = htmlspecialchars(($item['baski_durumu'] ?? '') === 'Baskısız' ? 'Baskısız' : ($item['renk_sayisi'] ?? ''));
+            $uMat = htmlspecialchars($item['hammadde'] ?? ($item['material'] ?? '-'));
+            $uPrint = htmlspecialchars(($item['baski_durumu'] ?? '') === 'Baskısız' ? 'Baskısız' : ($item['renk_sayisi'] ?? 'Baskılı'));
             if (!empty($item['fatura_cebi_dahil'])) {
-                $uPrint .= " (Fatura Cebi Dahil)";
+                $uPrint .= " + Cep";
             }
-            $uPrice = "₺" . number_format(round($item['toplam_fiyat'] ?? 0));
+            $uStock = htmlspecialchars($item['stok_durumu'] ?? 'Sipariş Üzerine Üretim');
+            $uPrice = (!empty($item['birim_fiyat']) && $item['birim_fiyat'] > 0) ? "₺" . number_format($item['birim_fiyat'], 2) : "Özel İmalat";
+            $uTotal = (!empty($item['toplam_fiyat']) && $item['toplam_fiyat'] > 0) ? "₺" . number_format(round($item['toplam_fiyat'])) : "Teklif Bekliyor";
             $grandTotal += ($item['toplam_fiyat'] ?? 0);
 
-            $body .= "<tr><td>{$uName}</td><td>{$uCode}</td><td>{$uDim}</td><td>{$uQty}</td><td>{$uPrint}</td><td>{$uPrice}</td></tr>";
+            $noteHtml = !empty($item['musteri_notu']) ? "<br><small style='color:#e11d48;'><strong>Not:</strong> " . htmlspecialchars($item['musteri_notu']) . "</small>" : "";
+
+            $itemIdx = $idx + 1;
+            $body .= "<tr><td>{$itemIdx}</td><td><strong>{$uName}</strong>{$uCode}{$noteHtml}</td><td>{$uDim}</td><td>{$uQty}</td><td>{$uMat}</td><td>{$uPrint}</td><td>{$uStock}</td><td>{$uPrice}</td><td><strong>{$uTotal}</strong></td></tr>";
         }
     }
 
-    $body .= "</table>";
-    $body .= "<h3>Genel Toplam (KDV Hariç): ₺" . number_format(round($grandTotal)) . "</h3>";
-    $body .= "<hr><p style='font-size:11px;color:#777;'>Bu e-posta poset.com Fiyat Teklif Merkezi üzerinden otomatik oluşturulmuştur.</p>";
-    $body .= "</body></html>";
+    $grandTotalFormatted = number_format(round($grandTotal));
+    $body .= "</table>"
+          . "<div class='total-box'>"
+          . "<div class='total-title'>TOPLAM TAHMİNİ TUTAR: ₺{$grandTotalFormatted} ({$taxNoteText})</div>"
+          . "<p style='margin: 6px 0 0 0; font-size: 12px; color: #475569;'>ℹ️ <strong>Teklif Notu:</strong> {$validityNoteText}</p>"
+          . "</div></div>"
+          . "<div class='footer'>Bu teklif talebi <strong>poset.com</strong> Fiyat Teklif Merkezi üzerinden otomatik oluşturulmuştur.</div>"
+          . "</div></body></html>";
 
     $sent = sendSmtpEmail($to, $subject, $body, $custEmail);
 

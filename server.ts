@@ -1869,18 +1869,9 @@ function getRuleBasedFallback(prompt: string) {
 }
 
 // API endpoint to process prompt via Gemini Or fallback
-app.post("/api/quote", async (req, res) => {
+app.post(["/api/quote", "/api/quote.php"], async (req, res, next) => {
   if (req.body && req.body.action === "submit_rfq") {
-    const recipientEmail = "info@poset.com";
-    const { customer, items } = req.body;
-    console.log(`[RFQ SUBMITTED] Sending quote request for ${customer?.name} (${customer?.phone}) to ${recipientEmail}`);
-    return res.json({
-      success: true,
-      message: `Teklif talebiniz ${recipientEmail} adresine başarıyla iletildi.`,
-      recipient: recipientEmail,
-      customer,
-      itemsCount: Array.isArray(items) ? items.length : 0
-    });
+    return next();
   }
 
   const { prompt } = req.body;
@@ -3262,61 +3253,124 @@ app.delete(["/api/admin/categories/:id", "/api/admin/categories"], async (req, r
   return res.json({ success: true, categories: cats });
 });
 
-app.post("/api/quote", async (req, res) => {
+app.post(["/api/quote", "/api/quote.php"], async (req, res) => {
   try {
-    const { action, customer, items } = req.body || {};
+    const { action, customer, items, tax_note, validity_note } = req.body || {};
     if (action === "submit_rfq") {
-      const to = req.body?.recipient_email || process.env.SMTP_RECIPIENT || "info@poset.com";
+      const settings = await getSettingsData();
+      const to = req.body?.recipient_email 
+        || settings.notificationEmail 
+        || settings.smtp?.toEmail 
+        || settings.smtp?.fromEmail 
+        || process.env.SMTP_RECIPIENT 
+        || "info@reksa.net";
+
       const custName = customer?.name || "Belirtilmedi";
       const custPhone = customer?.phone || "Belirtilmedi";
       const custCompany = customer?.company || "Belirtilmedi";
       const custEmail = customer?.email || "Belirtilmedi";
       const custMonthly = customer?.monthlyConsumption || "Belirtilmedi";
+      const custNote = customer?.notes || customer?.note || "Belirtilmedi";
+      const taxNoteText = tax_note || settings.taxNote || "KDV Hariç";
+      const validityNoteText = validity_note || settings.validityNote || "Fiyatlarımız 15 gün geçerlidir.";
 
       const subject = `Yeni Teklif Talebi (poset.com) - ${custName}`;
 
-      let body = `<html><head><style>
-body { font-family: Arial, sans-serif; color: #333; }
-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-th { background-color: #0b1c3f; color: white; }
+      let body = `<html><head><meta charset="utf-8"><style>
+body { font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; background: #f8fafc; padding: 20px; }
+.card { max-width: 750px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+.header { background: #0b1c3f; color: #ffffff; padding: 24px; text-align: left; }
+.header h2 { margin: 0 0 6px 0; font-size: 20px; letter-spacing: -0.5px; }
+.header p { margin: 0; font-size: 13px; color: #94a3b8; }
+.content { padding: 24px; }
+.section-title { font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; color: #0b1c3f; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; margin: 20px 0 12px 0; }
+.info-grid { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; }
+.info-grid td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
+.info-label { font-weight: bold; color: #64748b; width: 180px; }
+.info-val { color: #0f172a; font-weight: 600; }
+table.items { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+table.items th { background: #0b1c3f; color: #ffffff; padding: 10px 8px; text-align: left; font-size: 11px; text-transform: uppercase; }
+table.items td { border-bottom: 1px solid #e2e8f0; padding: 10px 8px; vertical-align: top; }
+table.items tr:nth-child(even) { background-color: #f8fafc; }
+.total-box { margin-top: 20px; padding: 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; }
+.total-title { font-size: 16px; font-weight: bold; color: #166534; }
+.footer { padding: 16px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
 </style></head><body>
-<h2 style='color:#0b1c3f;'>Yeni Fiyat Teklifi Talebi</h2>
-<h3>Teklif Sahibinin Bilgileri</h3>
-<ul>
-<li><strong>Adı Soyadı:</strong> ${custName}</li>
-<li><strong>Firma / Marka:</strong> ${custCompany}</li>
-<li><strong>Telefon:</strong> ${custPhone}</li>
-<li><strong>E-posta:</strong> ${custEmail}</li>
-<li><strong>Aylık Ortalama Tüketim:</strong> ${custMonthly}</li>
-</ul>
-<h3>Talep Edilen Ürünler</h3>
-<table>
-<tr><th>Ürün Adı</th><th>SKU</th><th>Ölçü</th><th>Miktar</th><th>Baskı / Detay</th><th>Tahmini Tutar</th></tr>`;
+<div class="card">
+  <div class="header">
+    <h2>AMBALAJ MARKET - FİYAT TEKLİFİ VE SİPARİŞ TALEBİ</h2>
+    <p>Tarih & Saat: ${new Date().toLocaleString("tr-TR")}</p>
+  </div>
+  <div class="content">
+    <div class="section-title">MÜŞTERİ BİLGİLERİ</div>
+    <table class="info-grid">
+      <tr><td class="info-label">Yetkili / Adı Soyadı:</td><td class="info-val">${custName}</td></tr>
+      <tr><td class="info-label">Firma / Marka:</td><td class="info-val">${custCompany}</td></tr>
+      <tr><td class="info-label">Telefon Numarası:</td><td class="info-val">${custPhone}</td></tr>
+      <tr><td class="info-label">E-Posta Adresi:</td><td class="info-val">${custEmail}</td></tr>
+      <tr><td class="info-label">Aylık Tüketim Potansiyeli:</td><td class="info-val">${custMonthly}</td></tr>
+      ${custNote !== "Belirtilmedi" ? `<tr><td class="info-label">Müşteri Notu:</td><td class="info-val">${custNote}</td></tr>` : ''}
+    </table>
+
+    <div class="section-title">TALEP EDİLEN ÜRÜNLER (${Array.isArray(items) ? items.length : 0} KALEM)</div>
+    <table class="items">
+      <tr>
+        <th>#</th>
+        <th>Ürün Adı</th>
+        <th>Ölçü</th>
+        <th>Miktar</th>
+        <th>Hammadde</th>
+        <th>Baskı / Cep</th>
+        <th>Stok/Üretim</th>
+        <th>Birim Fiyat</th>
+        <th>Tutar</th>
+      </tr>`;
 
       let grandTotal = 0;
       if (Array.isArray(items)) {
-        for (const item of items) {
+        items.forEach((item, idx) => {
           const uName = item.urun_adi || "";
-          const uCode = item.urun_kodu || "";
+          const uCode = item.urun_kodu ? ` (${item.urun_kodu})` : "";
           const uDim = item.olculer || "";
-          const uQty = (item.miktar || 0).toLocaleString() + " " + (item.satis_sekli || "Adet");
-          let uPrint = (item.baski_durumu === "Baskısız" ? "Baskısız" : (item.renk_sayisi || ""));
+          const uQty = (item.miktar || 0).toLocaleString("tr-TR") + " " + (item.satis_sekli || "Adet");
+          const uMat = item.hammadde || item.material || "-";
+          let uPrint = (item.baski_durumu === "Baskısız" ? "Baskısız" : (item.renk_sayisi || "Baskılı"));
           if (item.fatura_cebi_dahil) {
-            uPrint += " (Fatura Cebi Dahil)";
+            uPrint += " + Cep";
           }
-          const uPrice = "₺" + Math.round(item.toplam_fiyat || 0).toLocaleString();
+          const uStock = item.stok_durumu || "Sipariş Üzerine Üretim";
+          const uPrice = (item.birim_fiyat > 0) ? `₺${item.birim_fiyat.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}` : "Özel İmalat";
+          const uTotal = (item.toplam_fiyat > 0) ? `₺${Math.round(item.toplam_fiyat).toLocaleString("tr-TR")}` : "Teklif Bekliyor";
           grandTotal += (item.toplam_fiyat || 0);
 
-          body += `<tr><td>${uName}</td><td>${uCode}</td><td>${uDim}</td><td>${uQty}</td><td>${uPrint}</td><td>${uPrice}</td></tr>`;
-        }
+          let noteHtml = item.musteri_notu ? `<br><small style="color:#e11d48;"><strong>Not:</strong> ${item.musteri_notu}</small>` : '';
+
+          body += `<tr>
+            <td>${idx + 1}</td>
+            <td><strong>${uName}</strong>${uCode}${noteHtml}</td>
+            <td>${uDim}</td>
+            <td>${uQty}</td>
+            <td>${uMat}</td>
+            <td>${uPrint}</td>
+            <td>${uStock}</td>
+            <td>${uPrice}</td>
+            <td><strong>${uTotal}</strong></td>
+          </tr>`;
+        });
       }
 
       body += `</table>
-<h3>Genel Toplam (KDV Hariç): ₺${Math.round(grandTotal).toLocaleString()}</h3>
-<hr><p style='font-size:11px;color:#777;'>Bu e-posta poset.com Fiyat Teklif Merkezi üzerinden otomatik oluşturulmuştur.</p>
-</body></html>`;
+    <div class="total-box">
+      <div class="total-title">TOPLAM TAHMİNİ TUTAR: ₺${Math.round(grandTotal).toLocaleString("tr-TR")} (${taxNoteText})</div>
+      <p style="margin: 6px 0 0 0; font-size: 12px; color: #475569;">ℹ️ <strong>Teklif Notu:</strong> ${validityNoteText}</p>
+    </div>
+  </div>
+  <div class="footer">
+    Bu teklif talebi <strong>poset.com</strong> Fiyat Teklif Merkezi üzerinden otomatik oluşturulmuştur.
+  </div>
+</div></body></html>`;
 
+      console.log(`[SMTP QUOTE] Dispatching quote email for ${custName} to ${to}`);
       const sent = await sendSmtpEmailNode({
         to,
         subject,

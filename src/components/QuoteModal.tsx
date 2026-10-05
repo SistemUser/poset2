@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ShoppingBag, Check, Send, AlertCircle } from "lucide-react";
 import { useQuote, getStoredRfqSettings } from "../context/QuoteContext";
 import { QuoteFormData, RfqSettings, DEFAULT_RFQ_SETTINGS } from "../types";
+import { getApiEndpoint } from "../utils/urlHelper";
 
 interface QuoteModalProps {
   isOpen: boolean;
@@ -78,20 +79,39 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
       const targetNumber = settings.whatsappNumber || DEFAULT_RFQ_SETTINGS.whatsappNumber;
       const whatsappUrl = getWhatsAppQuoteUrl(quoteBasket, formData, targetNumber, settings);
 
-      // Sunucuya arka planda RFQ kaydını bildir (opsiyonel bildirim)
+      // Sunucuya arka planda RFQ kaydını ve paneldeki e-posta adresine bildirimi ilet
       try {
-        const isProduction = (import.meta as any).env?.PROD;
-        const apiEndpoint = isProduction ? "/api/quote.php" : "/api/quote";
-        await fetch(apiEndpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "submit_rfq",
-            recipient_email: settings.notificationEmail || "info@reksa.net",
-            customer: formData,
-            items: quoteBasket
-          })
-        }).catch(() => {});
+        const targetEmail = settings.notificationEmail || "info@reksa.net";
+        const quotePayload = JSON.stringify({
+          action: "submit_rfq",
+          recipient_email: targetEmail,
+          customer: formData,
+          items: quoteBasket,
+          tax_note: settings.taxNote,
+          validity_note: settings.validityNote
+        });
+
+        const endpoints = [
+          getApiEndpoint("api/quote"),
+          getApiEndpoint("api/quote.php"),
+          "/api/quote",
+          "/api/quote.php"
+        ];
+
+        for (const ep of endpoints) {
+          try {
+            const res = await fetch(ep, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: quotePayload
+            });
+            const text = await res.text();
+            if (text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
+              const data = JSON.parse(text);
+              if (data?.success) break;
+            }
+          } catch (e) {}
+        }
       } catch (err) {}
 
       // 2. window.open(whatsappUrl, '_blank') ile WhatsApp'ı aç
