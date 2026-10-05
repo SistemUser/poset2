@@ -4,7 +4,7 @@ import { Product, parsePriceMultipliers } from "../types";
 import { IMAGES } from "../constants";
 import { TAXONOMY_PRODUCTS, CATEGORIES, TaxonomyProduct } from "../productsData";
 import { useAppConfig } from "../AppContext";
-import { getSubfolderPrefix } from "../utils/urlHelper";
+import { getSubfolderPrefix, getApiEndpoint } from "../utils/urlHelper";
 import { getImgSrc, handleImageError } from "../utils/imageHelper";
 
 interface CatalogTabProps {
@@ -19,6 +19,7 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
   
   // Live API cache-busting categories state
   const [liveCategories, setLiveCategories] = useState<any[]>([]);
+  const [addedProductId, setAddedProductId] = useState<string | null>(null);
 
   React.useEffect(() => {
     fetch(getApiEndpoint(`api/categories?t=${Date.now()}`), { 

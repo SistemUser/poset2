@@ -7,9 +7,7 @@ export default defineConfig(() => {
   return {
     base: "./",
     plugins: [
-      react({
-        fastRefresh: false
-      }), 
+      react(),
       tailwindcss()
     ],
     resolve: {

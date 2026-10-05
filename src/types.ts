@@ -140,6 +140,7 @@ export interface DbProduct {
   allow_custom_dimensions?: boolean;
   allow_custom_size?: boolean;
   custom_size?: { en: string; boy: string; koruk?: string };
+  isPremiumPrice?: boolean;
 }
 
 export interface PriceTierOption {
