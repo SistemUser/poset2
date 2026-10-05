@@ -293,3 +293,23 @@ export interface QuoteFormData {
   email: string;
   notes?: string;
 }
+
+export interface SmtpSettings {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  fromName: string;
+  fromEmail: string;
+}
+
+export const DEFAULT_SMTP_SETTINGS: SmtpSettings = {
+  host: 'server.reksa.net',
+  port: 465,
+  secure: true,
+  user: 'info@reksa.net',
+  pass: 'z4DdYyvU32XD',
+  fromName: 'Poset.com Teklif Sistemi',
+  fromEmail: 'info@reksa.net'
+};

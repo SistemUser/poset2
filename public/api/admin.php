@@ -325,6 +325,8 @@ if (empty($action)) {
     ];
     foreach ($uris as $u) {
         $path = parse_url($u, PHP_URL_PATH) ?? '';
+        if (str_contains($path, '/test-smtp')) { $action = 'test-smtp'; break; }
+        if (str_contains($path, '/smtp')) { $action = 'smtp'; break; }
         if (str_contains($path, '/refresh-rate')) { $action = 'refresh-rate'; break; }
         if (str_contains($path, '/settings')) { $action = 'settings'; break; }
         if (str_contains($path, '/products')) { $action = 'products'; break; }
@@ -385,6 +387,146 @@ if ($action === 'settings') {
         echo json_encode($settings, JSON_UNESCAPED_UNICODE);
         exit;
     }
+}
+
+function sendAdminSmtpEmail($cfg, $to, $subject, $body) {
+    $rawHost = !empty($cfg['host']) ? $cfg['host'] : 'server.reksa.net';
+    $smtpPort = !empty($cfg['port']) ? intval($cfg['port']) : 465;
+    $username = !empty($cfg['user']) ? $cfg['user'] : 'info@reksa.net';
+    $password = !empty($cfg['pass']) ? $cfg['pass'] : '';
+    $from = !empty($cfg['fromEmail']) ? $cfg['fromEmail'] : $username;
+    $fromName = !empty($cfg['fromName']) ? $cfg['fromName'] : 'Poset.com Teklif Sistemi';
+
+    $smtpHost = (strpos($rawHost, '://') === false && $smtpPort == 465) ? 'ssl://' . $rawHost : $rawHost;
+
+    $context = stream_context_create([
+        'ssl' => [
+            'verify_peer' => false,
+            'verify_peer_name' => false,
+            'allow_self_signed' => true
+        ]
+    ]);
+
+    $socket = @stream_socket_client("{$smtpHost}:{$smtpPort}", $errno, $errstr, 12, STREAM_CLIENT_CONNECT, $context);
+    if (!$socket) {
+        return ['success' => false, 'error' => "Bağlantı hatası: {$errstr} ({$errno})"];
+    }
+
+    $readResp = function($s) {
+        $res = "";
+        while ($line = fgets($s, 515)) {
+            $res .= $line;
+            if (substr($line, 3, 1) === " ") break;
+        }
+        return $res;
+    };
+
+    $readResp($socket);
+    fwrite($socket, "EHLO {$rawHost}\r\n");
+    $readResp($socket);
+
+    fwrite($socket, "AUTH LOGIN\r\n");
+    $readResp($socket);
+
+    fwrite($socket, base64_encode($username) . "\r\n");
+    $readResp($socket);
+
+    fwrite($socket, base64_encode($password) . "\r\n");
+    $authStatus = $readResp($socket);
+    if (substr($authStatus, 0, 3) !== '235') {
+        fclose($socket);
+        return ['success' => false, 'error' => 'SMTP Kimlik Doğrulama Başarısız: ' . trim($authStatus)];
+    }
+
+    fwrite($socket, "MAIL FROM: <{$from}>\r\n");
+    $readResp($socket);
+
+    fwrite($socket, "RCPT TO: <{$to}>\r\n");
+    $readResp($socket);
+
+    fwrite($socket, "DATA\r\n");
+    $readResp($socket);
+
+    $headersArr = [
+        "MIME-Version: 1.0",
+        "Content-Type: text/html; charset=UTF-8",
+        "From: {$fromName} <{$from}>",
+        "To: <{$to}>",
+        "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=",
+        "Date: " . date("r")
+    ];
+    $emailData = implode("\r\n", $headersArr) . "\r\n\r\n" . $body . "\r\n.\r\n";
+    fwrite($socket, $emailData);
+    $dataResp = $readResp($socket);
+
+    fwrite($socket, "QUIT\r\n");
+    fclose($socket);
+
+    if (substr($dataResp, 0, 3) !== '250') {
+        return ['success' => false, 'error' => 'E-posta iletilemedi: ' . trim($dataResp)];
+    }
+
+    return ['success' => true];
+}
+
+if ($action === 'smtp') {
+    $settings = getDbData($settingsFile, $defaultSettings);
+    if ($method === 'POST') {
+        $smtp = [
+            'host' => trim((string)($input['host'] ?? 'server.reksa.net')),
+            'port' => intval($input['port'] ?? 465),
+            'secure' => isset($input['secure']) ? (bool)$input['secure'] : true,
+            'user' => trim((string)($input['user'] ?? 'info@reksa.net')),
+            'pass' => trim((string)($input['pass'] ?? '')),
+            'fromName' => trim((string)($input['fromName'] ?? 'Poset.com Teklif Sistemi')),
+            'fromEmail' => trim((string)($input['fromEmail'] ?? ($input['user'] ?? 'info@reksa.net')))
+        ];
+        $settings['smtp'] = $smtp;
+        saveDbData($settingsFile, $settings);
+        echo json_encode(['success' => true, 'smtp' => $smtp], JSON_UNESCAPED_UNICODE);
+        exit;
+    } else {
+        $defaultSmtp = [
+            'host' => 'server.reksa.net',
+            'port' => 465,
+            'secure' => true,
+            'user' => 'info@reksa.net',
+            'pass' => 'z4DdYyvU32XD',
+            'fromName' => 'Poset.com Teklif Sistemi',
+            'fromEmail' => 'info@reksa.net'
+        ];
+        $smtp = isset($settings['smtp']) && is_array($settings['smtp']) ? array_merge($defaultSmtp, $settings['smtp']) : $defaultSmtp;
+        echo json_encode(['success' => true, 'smtp' => $smtp], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
+if ($action === 'test-smtp') {
+    $settings = getDbData($settingsFile, $defaultSettings);
+    $cfg = !empty($input['host']) ? $input : ($settings['smtp'] ?? []);
+    $testTo = !empty($input['testEmail']) ? trim($input['testEmail']) : (!empty($cfg['fromEmail']) ? $cfg['fromEmail'] : (!empty($cfg['user']) ? $cfg['user'] : 'info@reksa.net'));
+
+    $body = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">'
+          . '<div style="background-color: #0b1c3f; color: white; padding: 20px; text-align: center;"><h2 style="margin: 0; font-size: 20px;">poset.com Mail Sunucu Testi</h2></div>'
+          . '<div style="padding: 24px; color: #334155; line-height: 1.6;">'
+          . '<p style="font-size: 16px; color: #16a34a; font-weight: bold;">✓ Tebrikler! Mail sunucu (SMTP) ayarlarınız başarıyla doğrulandı.</p>'
+          . '<p>Bu test iletisi canlı sunucu üzerinden gönderilmiştir.</p>'
+          . '<hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 20px 0;" />'
+          . '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">'
+          . '<tr><td style="padding: 6px 0; font-weight: bold; width: 140px;">SMTP Sunucu:</td><td>' . htmlspecialchars($cfg['host'] ?? '') . ':' . htmlspecialchars($cfg['port'] ?? '') . '</td></tr>'
+          . '<tr><td style="padding: 6px 0; font-weight: bold;">Gönderici:</td><td>' . htmlspecialchars($cfg['user'] ?? '') . '</td></tr>'
+          . '<tr><td style="padding: 6px 0; font-weight: bold;">Test Alıcısı:</td><td>' . htmlspecialchars($testTo) . '</td></tr>'
+          . '<tr><td style="padding: 6px 0; font-weight: bold;">Tarih:</td><td>' . date('d.m.Y H:i:s') . '</td></tr>'
+          . '</table></div></div>';
+
+    $res = sendAdminSmtpEmail($cfg, $testTo, 'poset.com SMTP Bağlantı Testi (Başarılı)', $body);
+    if ($res['success']) {
+        echo json_encode(['success' => true, 'message' => "Test e-postası {$testTo} adresine başarıyla gönderildi."], JSON_UNESCAPED_UNICODE);
+    } else {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => $res['error'] ?? 'SMTP bağlantısı başarısız oldu.'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
 }
 
 if ($action === 'products') {

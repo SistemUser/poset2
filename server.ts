@@ -2865,21 +2865,53 @@ app.delete("/api/admin/multiplier-templates/:id", async (req, res) => {
   }
 });
 
+async function getEffectiveSmtpConfig() {
+  const settings = await getSettingsData();
+  const s = settings.smtp || {};
+  return {
+    host: s.host || process.env.SMTP_HOST || "server.reksa.net",
+    port: parseInt(String(s.port || process.env.SMTP_PORT || "465"), 10),
+    secure: s.secure !== undefined ? Boolean(s.secure) : true,
+    user: s.user || process.env.SMTP_USER || "info@reksa.net",
+    pass: s.pass || process.env.SMTP_PASS || "z4DdYyvU32XD",
+    fromName: s.fromName || "Poset.com Teklif Sistemi",
+    fromEmail: s.fromEmail || s.user || process.env.SMTP_USER || "info@reksa.net"
+  };
+}
+
 function sendSmtpEmailNode(options: {
   to: string;
   subject: string;
   html: string;
   replyTo?: string;
-}): Promise<boolean> {
-  return new Promise((resolve) => {
-    const host = process.env.SMTP_HOST || "server.reksa.net";
-    const port = parseInt(process.env.SMTP_PORT || "465", 10);
-    const user = process.env.SMTP_USER || "info@reksa.net";
-    const pass = process.env.SMTP_PASS || "z4DdYyvU32XD";
-    const fromName = "Poset.com Teklif Sistemi";
-    const fromAddr = user;
+  smtpConfig?: any;
+}): Promise<{ success: boolean; message?: string; error?: string }> {
+  return new Promise(async (resolve) => {
+    let resolved = false;
+    const finish = (success: boolean, message?: string, error?: string) => {
+      if (!resolved) {
+        resolved = true;
+        try { socket.destroy(); } catch (e) {}
+        resolve({ success, message, error });
+      }
+    };
+
+    const cfg = options.smtpConfig || await getEffectiveSmtpConfig();
+    const host = cfg.host || "server.reksa.net";
+    const port = parseInt(String(cfg.port || "465"), 10);
+    const user = cfg.user || "info@reksa.net";
+    const pass = cfg.pass || "";
+    const fromName = cfg.fromName || "Poset.com Teklif Sistemi";
+    const fromAddr = cfg.fromEmail || user;
+
+    if (!user || !pass) {
+      return finish(false, undefined, "SMTP kullanıcı adı veya şifresi eksik.");
+    }
 
     const socket = tls.connect(port, host, { rejectUnauthorized: false }, () => {});
+    socket.setTimeout(12000, () => {
+      finish(false, undefined, "Sunucuya bağlanırken zaman aşımı (Timeout) oluştu.");
+    });
 
     let step = 0;
     let buffer = "";
@@ -2897,6 +2929,11 @@ function sendSmtpEmailNode(options: {
         if (!line) continue;
         const code = parseInt(line.substring(0, 3), 10);
         if (isNaN(code)) continue;
+
+        if (code >= 400 && code <= 599) {
+          finish(false, undefined, `SMTP Sunucu Hatası (${code}): ${line.substring(4)}`);
+          return;
+        }
 
         if (step === 0 && code === 220) {
           step = 1;
@@ -2939,21 +2976,91 @@ function sendSmtpEmailNode(options: {
           step = 9;
           sendCmd("QUIT");
           socket.end();
-          resolve(true);
+          finish(true, "E-posta başarıyla iletildi.");
         }
       }
     });
 
-    socket.on("error", (err) => {
-      console.error("SMTP Socket error:", err);
-      resolve(false);
+    socket.on("error", (err: any) => {
+      finish(false, undefined, `Soket bağlantı hatası: ${err?.message || err}`);
     });
 
     socket.on("end", () => {
-      if (step < 8) resolve(false);
+      if (step < 8) finish(false, undefined, "Sunucu bağlantıyı beklenmedik şekilde kapattı.");
     });
   });
 }
+
+// SMTP Settings Endpoints
+app.get("/api/admin/smtp", async (req, res) => {
+  try {
+    const config = await getEffectiveSmtpConfig();
+    return res.json({ success: true, smtp: config });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err?.message || "Hata oluştu." });
+  }
+});
+
+app.post("/api/admin/smtp", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const settings = await getSettingsData();
+    settings.smtp = {
+      host: body.host ? String(body.host).trim() : "server.reksa.net",
+      port: body.port ? parseInt(String(body.port), 10) : 465,
+      secure: body.secure !== undefined ? Boolean(body.secure) : true,
+      user: body.user ? String(body.user).trim() : "info@reksa.net",
+      pass: body.pass ? String(body.pass).trim() : "",
+      fromName: body.fromName ? String(body.fromName).trim() : "Poset.com Teklif Sistemi",
+      fromEmail: body.fromEmail ? String(body.fromEmail).trim() : (body.user ? String(body.user).trim() : "info@reksa.net")
+    };
+    await saveSettingsData(settings);
+    return res.json({ success: true, smtp: settings.smtp });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err?.message || "SMTP ayarları kaydedilemedi." });
+  }
+});
+
+app.post("/api/admin/test-smtp", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const effectiveCfg = body.host ? body : await getEffectiveSmtpConfig();
+    const testTo = body.testEmail || effectiveCfg.fromEmail || effectiveCfg.user || "info@reksa.net";
+
+    const result = await sendSmtpEmailNode({
+      to: testTo,
+      subject: "poset.com SMTP Bağlantı Testi (Başarılı)",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+          <div style="background-color: #0b1c3f; color: white; padding: 20px; text-align: center;">
+            <h2 style="margin: 0; font-size: 20px;">poset.com Mail Sunucu Testi</h2>
+          </div>
+          <div style="padding: 24px; color: #334155; line-height: 1.6;">
+            <p style="font-size: 16px; color: #16a34a; font-weight: bold;">✓ Tebrikler! Mail sunucu (SMTP) ayarlarınız başarıyla doğrulandı.</p>
+            <p>Bu test iletisi, yönetim panelinden girdiğiniz SMTP sunucu parametreleri kullanılarak gönderilmiştir.</p>
+            <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 20px 0;" />
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <tr><td style="padding: 6px 0; font-weight: bold; width: 140px;">SMTP Sunucu:</td><td>${effectiveCfg.host}:${effectiveCfg.port}</td></tr>
+              <tr><td style="padding: 6px 0; font-weight: bold;">Gönderici Hesap:</td><td>${effectiveCfg.user}</td></tr>
+              <tr><td style="padding: 6px 0; font-weight: bold;">Gönderici Başlık:</td><td>${effectiveCfg.fromName}</td></tr>
+              <tr><td style="padding: 6px 0; font-weight: bold;">Test Alıcısı:</td><td>${testTo}</td></tr>
+              <tr><td style="padding: 6px 0; font-weight: bold;">Tarih & Saat:</td><td>${new Date().toLocaleString("tr-TR")}</td></tr>
+            </table>
+          </div>
+        </div>
+      `,
+      smtpConfig: effectiveCfg
+    });
+
+    if (result.success) {
+      return res.json({ success: true, message: `Test e-postası ${testTo} adresine başarıyla gönderildi.` });
+    } else {
+      return res.status(400).json({ success: false, message: result.error || "SMTP bağlantısı başarısız oldu." });
+    }
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err?.message || "Test gönderimi sırasında hata oluştu." });
+  }
+});
 
 const DEFAULT_CATEGORY_SCHEMAS = [
   {
@@ -3207,7 +3314,8 @@ th { background-color: #0b1c3f; color: white; }
         success: true,
         message: `Teklif talebiniz ${to} adresine başarıyla iletildi.`,
         recipient: to,
-        smtp_sent: sent
+        smtp_sent: sent.success,
+        smtp_error: sent.error
       });
     }
 

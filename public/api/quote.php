@@ -21,12 +21,24 @@ $gemini_api_key = getenv('GEMINI_API_KEY') ?: '';
 $input = json_decode(file_get_contents('php://input'), true);
 
 function sendSmtpEmail($to, $subject, $body, $replyToEmail = '') {
-    $rawHost = getenv('SMTP_HOST') ?: 'server.reksa.net';
-    $smtpPort = getenv('SMTP_PORT') ? intval(getenv('SMTP_PORT')) : 465;
-    $username = getenv('SMTP_USER') ?: 'info@reksa.net';
-    $password = getenv('SMTP_PASS') ?: 'z4DdYyvU32XD';
-    $from = $username;
-    $fromName = 'Poset.com Teklif Sistemi';
+    $settingsFile = __DIR__ . '/data/settings.json';
+    if (!file_exists($settingsFile)) {
+        $settingsFile = dirname(__DIR__, 2) . '/data/settings.json';
+    }
+    $cfg = [];
+    if (file_exists($settingsFile)) {
+        $data = json_decode(file_get_contents($settingsFile), true);
+        if (!empty($data['smtp']) && is_array($data['smtp'])) {
+            $cfg = $data['smtp'];
+        }
+    }
+
+    $rawHost = !empty($cfg['host']) ? $cfg['host'] : (getenv('SMTP_HOST') ?: 'server.reksa.net');
+    $smtpPort = !empty($cfg['port']) ? intval($cfg['port']) : (getenv('SMTP_PORT') ? intval(getenv('SMTP_PORT')) : 465);
+    $username = !empty($cfg['user']) ? $cfg['user'] : (getenv('SMTP_USER') ?: 'info@reksa.net');
+    $password = !empty($cfg['pass']) ? $cfg['pass'] : (getenv('SMTP_PASS') ?: 'z4DdYyvU32XD');
+    $from = !empty($cfg['fromEmail']) ? $cfg['fromEmail'] : $username;
+    $fromName = !empty($cfg['fromName']) ? $cfg['fromName'] : 'Poset.com Teklif Sistemi';
 
     $smtpHost = (strpos($rawHost, '://') === false && $smtpPort == 465) ? 'ssl://' . $rawHost : $rawHost;
 
