@@ -218,6 +218,7 @@ export default function App() {
               <HomeTab
                 onAnalyzePrompt={handleAnalyzePromptFromHero}
                 setTab={handleSetTab}
+                onSearchCatalog={handleCatalogSearch}
               />
             </motion.div>
           )}
