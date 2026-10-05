@@ -8,15 +8,23 @@ interface HeaderProps {
   setTab: (tab: TabType, categoryKey?: string | null) => void;
   quotationListCount?: number;
   onOpenQuotationList?: () => void;
+  searchQuery?: string;
+  onSearch?: (query: string) => void;
 }
 
-export default function Header({ currentTab, setTab }: HeaderProps) {
-  const [headerSearch, setHeaderSearch] = useState("");
+export default function Header({ currentTab, setTab, searchQuery, onSearch }: HeaderProps) {
+  const [headerSearch, setHeaderSearch] = useState(searchQuery || "");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  React.useEffect(() => {
+    setHeaderSearch(searchQuery || "");
+  }, [searchQuery]);
 
   const handleQuickSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (headerSearch.trim()) {
+    if (onSearch) {
+      onSearch(headerSearch.trim());
+    } else {
       setTab("catalog");
     }
   };
@@ -167,15 +175,32 @@ export default function Header({ currentTab, setTab }: HeaderProps) {
 
           {/* Right Area: Search, Teklif Al button */}
           <div className="flex items-center space-x-3.5">
-            <form onSubmit={handleQuickSearch} className="hidden lg:flex items-center bg-slate-50 border border-slate-200 rounded-full px-3.5 py-1.5 space-x-2 w-48 focus-within:w-60 focus-within:border-[#0b1c3f] focus-within:bg-white transition-all duration-300">
-              <Search className="w-3.5 h-3.5 text-slate-400" />
+            <form onSubmit={handleQuickSearch} className="hidden lg:flex items-center bg-slate-50 border border-slate-200 rounded-full px-3.5 py-1.5 space-x-2 w-52 focus-within:w-64 focus-within:border-[#0b1c3f] focus-within:bg-white transition-all duration-300">
+              <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               <input
                 type="text"
-                placeholder="Hızlı Arama..."
+                placeholder="Hızlı Arama... (Kod, Ürün)"
                 value={headerSearch}
-                onChange={(e) => setHeaderSearch(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setHeaderSearch(val);
+                  if (onSearch) onSearch(val);
+                }}
                 className="bg-transparent border-none text-xs text-slate-700 w-full focus:outline-none focus:ring-0 p-0"
               />
+              {headerSearch && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHeaderSearch("");
+                    if (onSearch) onSearch("");
+                  }}
+                  className="text-slate-400 hover:text-slate-600 text-xs font-bold shrink-0 cursor-pointer"
+                  title="Temizle"
+                >
+                  ✕
+                </button>
+              )}
             </form>
 
             <button
@@ -229,6 +254,40 @@ export default function Header({ currentTab, setTab }: HeaderProps) {
                   <X className="w-4 h-4" />
                 </button>
               </div>
+
+              {/* Mobile Search Form */}
+              <form 
+                onSubmit={(e) => {
+                  handleQuickSearch(e);
+                  setIsMobileMenuOpen(false);
+                }} 
+                className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 space-x-2"
+              >
+                <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Katalogda hızlı ara..."
+                  value={headerSearch}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setHeaderSearch(val);
+                    if (onSearch) onSearch(val);
+                  }}
+                  className="bg-transparent border-none text-xs text-slate-800 w-full focus:outline-none focus:ring-0 p-0 font-medium"
+                />
+                {headerSearch && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHeaderSearch("");
+                      if (onSearch) onSearch("");
+                    }}
+                    className="text-slate-400 hover:text-slate-600 text-xs font-bold shrink-0 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
+              </form>
 
               {/* Mobile Navigation Links */}
               <nav className="flex flex-col space-y-2">

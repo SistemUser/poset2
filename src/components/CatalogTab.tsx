@@ -13,11 +13,27 @@ interface CatalogTabProps {
   onCustomizeWithAI: (productName: string) => void;
   setTab: (tab: "home" | "catalog" | "assistant", categoryKey?: string | null) => void;
   selectedCategory?: string | null;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 }
 
-export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab, selectedCategory }: CatalogTabProps) {
+export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab, selectedCategory, searchQuery, onSearchChange }: CatalogTabProps) {
   const { settings, formatTL, products: dbProducts, categories: contextCategories } = useAppConfig();
   
+  // Live search state synced with prop
+  const [localSearch, setLocalSearch] = useState(searchQuery || "");
+
+  React.useEffect(() => {
+    setLocalSearch(searchQuery || "");
+  }, [searchQuery]);
+
+  const effectiveSearch = searchQuery !== undefined ? searchQuery : localSearch;
+
+  const handleSearchUpdate = (newVal: string) => {
+    setLocalSearch(newVal);
+    if (onSearchChange) onSearchChange(newVal);
+  };
+
   // Live API cache-busting categories state
   const [liveCategories, setLiveCategories] = useState<any[]>([]);
   const [addedProductId, setAddedProductId] = useState<string | null>(null);
@@ -332,6 +348,51 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
         if (activeBaski === "baskili" && p.baski === "Baskısız") return false;
         if (activeBaski === "baskisiz" && p.baski !== "Baskısız") return false;
       }
+
+      // 4. Search Query Match (Product name, SKU, Category, Material, Dimensions)
+      if (effectiveSearch && effectiveSearch.trim()) {
+        const q = effectiveSearch.trim().toLowerCase();
+        
+        // Match product name
+        const pName = (p.name || "").toLowerCase();
+        if (pName.includes(q) || q.includes(pName)) return true;
+
+        // Match category
+        const cLabel = (p.categoryLabel || "").toLowerCase();
+        const cKey = (p.categoryKey || "").toLowerCase();
+        if (cLabel.includes(q) || cKey.includes(q)) return true;
+
+        // Match material / desc
+        const matDesc = `${p.malzeme || ""} ${p.desc || ""}`.toLowerCase();
+        if (matDesc.includes(q)) return true;
+
+        // Match variants (SKU / dimensions)
+        if (Array.isArray(p.variants) && p.variants.length > 0) {
+          const varMatch = p.variants.some(v => {
+            const vCode = (v.urun_kodu || "").toLowerCase();
+            const vDim = (v.olculer || "").toLowerCase();
+            const vMat = (v.hammadde_turu || "").toLowerCase();
+            return vCode.includes(q) || q.includes(vCode) || vDim.includes(q) || vMat.includes(q);
+          });
+          if (varMatch) return true;
+        }
+
+        // Match in live dbProducts
+        const dbMatches = (dbProducts || []).filter(dbP => {
+          const dbName = (dbP.urun_adi || "").toLowerCase();
+          return dbName === pName || dbName.includes(pName) || pName.includes(dbName);
+        });
+        if (dbMatches.some(dbP => {
+          const dbCode = (dbP.urun_kodu || dbP.sku || "").toLowerCase();
+          const dbDim = (dbP.olculer || dbP.olcu || "").toLowerCase();
+          return dbCode.includes(q) || q.includes(dbCode) || dbDim.includes(q);
+        })) {
+          return true;
+        }
+
+        return false;
+      }
+
       return true;
     });
 
@@ -350,7 +411,7 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
     }
 
     return result;
-  }, [allTaxonomyProducts, activeKullanim, activeMalzeme, activeBaski, sortBy, CATEGORY_KEY_TO_LABEL, CATEGORY_LABEL_TO_KEY, dbProducts]);
+  }, [allTaxonomyProducts, activeKullanim, activeMalzeme, activeBaski, sortBy, CATEGORY_KEY_TO_LABEL, CATEGORY_LABEL_TO_KEY, dbProducts, effectiveSearch]);
 
   const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE) || 1;
 
@@ -561,37 +622,103 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
           {/* Right Area: Grid items display */}
           <main className="lg:col-span-9 space-y-6">
             
-            {/* Controls Bar matches Image 3 details perfectly */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-100 pb-5">
-              <span className="text-xs font-bold text-slate-500 font-sans">
-                Toplam <span className="font-extrabold text-[#0f172a]">{filteredProducts.length}</span> Ürün Listeleniyor (Sayfa {currentPage} / {totalPages}).
-              </span>
+            {/* Controls Bar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="text-xs font-bold text-slate-500 font-sans">
+                  Toplam <span className="font-extrabold text-[#0f172a]">{filteredProducts.length}</span> Ürün Listeleniyor (Sayfa {currentPage} / {totalPages}).
+                </span>
+                {effectiveSearch.trim() && (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 border border-blue-200 text-blue-800 rounded-full text-xs font-bold animate-in fade-in">
+                    <span>Arama: <strong>"{effectiveSearch}"</strong></span>
+                    <button 
+                      onClick={() => handleSearchUpdate("")}
+                      className="text-blue-500 hover:text-blue-800 font-bold ml-1 cursor-pointer"
+                      title="Aramayı Temizle"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+              </div>
 
-              {/* Sorting tools dropdown alignment */}
-              <div className="flex items-center space-x-2">
-                <span className="text-xs font-bold text-slate-400">Sırala:</span>
-                <div className="relative">
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    className="appearance-none bg-white border border-slate-200 pr-9 pl-3.5 py-2 text-xs font-bold text-slate-700 rounded-xl focus:outline-none focus:border-[#0b1c3f] cursor-pointer"
-                  >
-                    <option value="Önerilenler">Önerilenler</option>
-                    <option value="artan">Fiyat: Artan</option>
-                    <option value="azalan">Fiyat: Azalan</option>
-                  </select>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+              {/* Search & Sorting tools alignment */}
+              <div className="flex items-center gap-3">
+                <div className="relative w-full sm:w-56">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Katalogda ara... (Örn: KSE, Kese)"
+                    value={effectiveSearch}
+                    onChange={(e) => handleSearchUpdate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 text-xs font-medium pl-8.5 pr-7 py-2 rounded-xl focus:bg-white focus:outline-none focus:border-[#0b1c3f] text-slate-800"
+                  />
+                  {effectiveSearch && (
+                    <button
+                      type="button"
+                      onClick={() => handleSearchUpdate("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                      title="Temizle"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center space-x-2 shrink-0">
+                  <span className="text-xs font-bold text-slate-400">Sırala:</span>
+                  <div className="relative">
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="appearance-none bg-white border border-slate-200 pr-9 pl-3.5 py-2 text-xs font-bold text-slate-700 rounded-xl focus:outline-none focus:border-[#0b1c3f] cursor-pointer"
+                    >
+                      <option value="Önerilenler">Önerilenler</option>
+                      <option value="artan">Fiyat: Artan</option>
+                      <option value="azalan">Fiyat: Azalan</option>
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Dynamic Grid layout with Image 3 exact card layouts */}
+            {filteredProducts.length === 0 ? (
+              <div className="text-center py-16 bg-slate-50 rounded-3xl border border-dashed border-slate-200 my-4 space-y-4">
+                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400">
+                  <Search className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-slate-800">Eşleşen Ürün Bulunamadı</h3>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    {effectiveSearch ? `"${effectiveSearch}" aramasıyla eşleşen ürün bulunamadı.` : "Seçtiğiniz filtrelere uygun ürün bulunamadı."}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    handleSearchUpdate("");
+                    clearAllFilters();
+                  }}
+                  className="px-4 py-2 bg-[#0b1c3f] text-white text-xs font-bold rounded-xl hover:bg-[#07132c] transition-colors cursor-pointer"
+                >
+                  Tüm Ürünleri Göster
+                </button>
+              </div>
+            ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6" id="catalog-main-grid">
               {paginatedProducts.map((prod) => {
                 const isProductCustomOnly = (prod as any).is_custom_only === true || (prod.variants || []).length === 0 || isCustomOnlyProduct(prod);
                 const activeVariantCode = isProductCustomOnly 
                   ? "custom_other" 
-                  : (selectedVariantCodes[prod.id] || prod.variants[0]?.urun_kodu || "custom_other");
+                  : (() => {
+                      if (selectedVariantCodes[prod.id]) return selectedVariantCodes[prod.id];
+                      if (effectiveSearch && effectiveSearch.trim()) {
+                        const q = effectiveSearch.trim().toLowerCase();
+                        const matchedV = prod.variants.find(v => v.urun_kodu.toLowerCase().includes(q) || q.includes(v.urun_kodu.toLowerCase()));
+                        if (matchedV) return matchedV.urun_kodu;
+                      }
+                      return prod.variants[0]?.urun_kodu || "custom_other";
+                    })();
                 const isCustomSize = isProductCustomOnly || activeVariantCode === "custom" || activeVariantCode === "custom_other";
                 const activeVariant = prod.variants.find(v => v.urun_kodu === activeVariantCode) || prod.variants[0] || ({} as any);
                 
@@ -894,6 +1021,7 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
                 );
               })}
             </div>
+            )}
 
             {/* Pagination HUD align matching bottom center of Image 3 exactly */}
             {totalPages > 1 && (

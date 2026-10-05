@@ -1315,26 +1315,53 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
         const skuCode = initialPrompt.replace("sku:", "").trim();
         applySkuSelection(skuCode);
       } else {
-        const searchParams = new URLSearchParams(window.location.search);
-        const skuFromUrl = searchParams.get("sku");
-        if (skuFromUrl) {
-          applySkuSelection(skuFromUrl);
-        } else {
-          const lowerPrompt = initialPrompt.toLowerCase();
-          const matchedProd = TAXONOMY_PRODUCTS.find(p => lowerPrompt.includes(p.name.toLowerCase()));
-          if (matchedProd) {
-            setSelectedCategoryKey(matchedProd.categoryKey);
-            setSelectedProductId(matchedProd.id);
-            setSelectedProduct(matchedProd);
-            const matchedVar = matchedProd.variants.find(v => lowerPrompt.includes(v.olculer.toLowerCase())) || matchedProd.variants[0];
-            if (matchedVar) {
-              setSelectedVariantCode(matchedVar.urun_kodu);
-              setSelectedDim(matchedVar.olculer);
-              setIsCustomDimension(false);
-              setCustomEn("");
-              setCustomBoy("");
-              setCustomKoruk("");
-              updateActiveSpecForProductAndVariant(matchedProd, matchedVar);
+        const cleanPrompt = initialPrompt.trim();
+        const lowerPrompt = cleanPrompt.toLowerCase();
+        const allDbProds = (Array.isArray(dbProducts) && dbProducts.length > 0) ? dbProducts : products;
+
+        // 1. Direct SKU match (e.g. "KSE-1020-74", "KRG-2432-02")
+        const directSkuFound = applySkuSelection(cleanPrompt);
+
+        if (!directSkuFound) {
+          // 2. Partial code or name match in DB
+          const partialDbMatch = allDbProds.find((p: any) => {
+            const pCode = (p.urun_kodu || p.sku || "").toLowerCase();
+            const pName = (p.urun_adi || "").toLowerCase();
+            return (pCode && (pCode.includes(lowerPrompt) || lowerPrompt.includes(pCode))) ||
+                   (pName && (pName.includes(lowerPrompt) || lowerPrompt.includes(pName)));
+          });
+
+          if (partialDbMatch && partialDbMatch.urun_kodu && applySkuSelection(partialDbMatch.urun_kodu)) {
+            // Matched via DB product SKU!
+          } else {
+            // 3. Search in taxonomy products
+            const matchedProd = TAXONOMY_PRODUCTS.find(p => 
+              lowerPrompt.includes(p.name.toLowerCase()) || 
+              p.name.toLowerCase().includes(lowerPrompt) ||
+              (p.keywords && p.keywords.some((k: string) => lowerPrompt.includes(k.toLowerCase()) || k.toLowerCase().includes(lowerPrompt))) ||
+              p.variants.some(v => v.urun_kodu.toLowerCase().includes(lowerPrompt) || lowerPrompt.includes(v.urun_kodu.toLowerCase()))
+            );
+
+            if (matchedProd) {
+              setSelectedCategoryKey(matchedProd.categoryKey);
+              setSelectedProductId(matchedProd.id);
+              setSelectedProduct(matchedProd);
+
+              const matchedVar = matchedProd.variants.find(v => 
+                v.urun_kodu.toLowerCase().includes(lowerPrompt) || 
+                lowerPrompt.includes(v.urun_kodu.toLowerCase()) ||
+                lowerPrompt.includes(v.olculer.toLowerCase())
+              ) || matchedProd.variants[0];
+
+              if (matchedVar) {
+                setSelectedVariantCode(matchedVar.urun_kodu);
+                setSelectedDim(matchedVar.olculer);
+                setIsCustomDimension(false);
+                setCustomEn("");
+                setCustomBoy("");
+                setCustomKoruk("");
+                updateActiveSpecForProductAndVariant(matchedProd, matchedVar);
+              }
             }
           }
         }

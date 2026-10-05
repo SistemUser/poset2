@@ -71,9 +71,17 @@ export default function App() {
 
   const [currentTab, setTab] = useState<TabType>(getInitialTab);
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
+  const [catalogSearchQuery, setCatalogSearchQuery] = useState<string>("");
   const [quotationList, setQuotationList] = useState<Product[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [activeInitialPrompt, setActiveInitialPrompt] = useState<string | null>(null);
+
+  const handleCatalogSearch = (query: string) => {
+    setCatalogSearchQuery(query);
+    if (currentTab !== "catalog") {
+      handleSetTab("catalog");
+    }
+  };
 
   const handleSetTab = (tab: TabType, categoryKey?: string | null) => {
     setTab(tab);
@@ -194,6 +202,8 @@ export default function App() {
           <Header
             currentTab={currentTab}
             setTab={handleSetTab}
+            searchQuery={catalogSearchQuery}
+            onSearch={handleCatalogSearch}
           />
         )}
 
@@ -223,6 +233,8 @@ export default function App() {
                 onCustomizeWithAI={handleCustomizeFromCatalog}
                 setTab={handleSetTab}
                 selectedCategory={selectedCategoryKey}
+                searchQuery={catalogSearchQuery}
+                onSearchChange={setCatalogSearchQuery}
               />
             </motion.div>
           )}
