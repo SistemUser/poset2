@@ -55,6 +55,7 @@ export interface QuoteItem {
   birim_fiyat: number;
   toplam_fiyat: number;
   logo_dosya_adi: string | null;
+  logo_base64?: string | null;
   fatura_cebi_dahil?: boolean;
   musteri_notu?: string;
   stok_durumu?: string;

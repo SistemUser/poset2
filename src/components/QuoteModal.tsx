@@ -210,9 +210,15 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
                             </>
                           )}
                         </div>
+                        {item.logo_dosya_adi && (
+                          <div className="text-[10px] text-emerald-800 bg-emerald-50/90 border border-emerald-200/80 rounded-md px-2 py-0.5 mt-0.5 font-sans flex items-center space-x-1.5">
+                            <span className="font-bold shrink-0">📎 Logo:</span>
+                            <span className="font-semibold truncate">{item.logo_dosya_adi}</span>
+                          </div>
+                        )}
                         {item.musteri_notu && (
-                          <div className="text-[10px] text-amber-800 bg-amber-50/90 border border-amber-200/80 rounded-md px-2 py-0.5 mt-0.5 font-sans flex items-start space-x-1">
-                            <span className="font-bold shrink-0">Not:</span>
+                          <div className="text-[10px] text-rose-800 bg-rose-50/90 border border-rose-200/80 rounded-md px-2 py-0.5 mt-0.5 font-sans flex items-start space-x-1">
+                            <span className="font-bold shrink-0">🔴 Not:</span>
                             <span className="italic font-medium">{item.musteri_notu}</span>
                           </div>
                         )}

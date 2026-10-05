@@ -2880,6 +2880,7 @@ function sendSmtpEmailNode(options: {
   html: string;
   replyTo?: string;
   smtpConfig?: any;
+  attachments?: Array<{ filename: string; contentType?: string; base64Content: string }>;
 }): Promise<{ success: boolean; message?: string; error?: string }> {
   return new Promise(async (resolve) => {
     let resolved = false;
@@ -2954,19 +2955,54 @@ function sendSmtpEmailNode(options: {
         } else if (step === 7 && code === 354) {
           step = 8;
           const subjectB64 = "=?UTF-8?B?" + Buffer.from(options.subject).toString("base64") + "?=";
-          const headers = [
-            `From: "${fromName}" <${fromAddr}>`,
-            `To: <${options.to}>`,
-            `Subject: ${subjectB64}`,
-            `MIME-Version: 1.0`,
-            `Content-Type: text/html; charset=UTF-8`,
-            `Date: ${new Date().toUTCString()}`
-          ];
-          if (options.replyTo) {
-            headers.push(`Reply-To: ${options.replyTo}`);
+
+          if (options.attachments && options.attachments.length > 0) {
+            const boundary = "====_Part_" + Date.now() + "_" + Math.random().toString(36).substring(2);
+            const headers = [
+              `From: "${fromName}" <${fromAddr}>`,
+              `To: <${options.to}>`,
+              `Subject: ${subjectB64}`,
+              `MIME-Version: 1.0`,
+              `Content-Type: multipart/mixed; boundary="${boundary}"`,
+              `Date: ${new Date().toUTCString()}`
+            ];
+            if (options.replyTo) {
+              headers.push(`Reply-To: ${options.replyTo}`);
+            }
+
+            let mimeBody = headers.join("\r\n") + "\r\n\r\n";
+            mimeBody += `--${boundary}\r\n`;
+            mimeBody += `Content-Type: text/html; charset=UTF-8\r\n`;
+            mimeBody += `Content-Transfer-Encoding: 8bit\r\n\r\n`;
+            mimeBody += options.html + "\r\n\r\n";
+
+            for (const att of options.attachments) {
+              const attNameB64 = "=?UTF-8?B?" + Buffer.from(att.filename).toString("base64") + "?=";
+              mimeBody += `--${boundary}\r\n`;
+              mimeBody += `Content-Type: ${att.contentType || "application/octet-stream"}; name="${attNameB64}"\r\n`;
+              mimeBody += `Content-Transfer-Encoding: base64\r\n`;
+              mimeBody += `Content-Disposition: attachment; filename="${attNameB64}"\r\n\r\n`;
+              const cleanB64 = att.base64Content.replace(/\s+/g, "");
+              const chunked = cleanB64.match(/.{1,76}/g)?.join("\r\n") || cleanB64;
+              mimeBody += chunked + "\r\n\r\n";
+            }
+            mimeBody += `--${boundary}--\r\n.`;
+            sendCmd(mimeBody);
+          } else {
+            const headers = [
+              `From: "${fromName}" <${fromAddr}>`,
+              `To: <${options.to}>`,
+              `Subject: ${subjectB64}`,
+              `MIME-Version: 1.0`,
+              `Content-Type: text/html; charset=UTF-8`,
+              `Date: ${new Date().toUTCString()}`
+            ];
+            if (options.replyTo) {
+              headers.push(`Reply-To: ${options.replyTo}`);
+            }
+            const body = headers.join("\r\n") + "\r\n\r\n" + options.html + "\r\n.";
+            sendCmd(body);
           }
-          const body = headers.join("\r\n") + "\r\n\r\n" + options.html + "\r\n.";
-          sendCmd(body);
         } else if (step === 8 && code === 250) {
           step = 9;
           sendCmd("QUIT");
@@ -3309,7 +3345,7 @@ table.items tr:nth-child(even) { background-color: #f8fafc; }
       <tr><td class="info-label">Telefon Numarası:</td><td class="info-val">${custPhone}</td></tr>
       <tr><td class="info-label">E-Posta Adresi:</td><td class="info-val">${custEmail}</td></tr>
       <tr><td class="info-label">Aylık Tüketim Potansiyeli:</td><td class="info-val">${custMonthly}</td></tr>
-      ${custNote !== "Belirtilmedi" ? `<tr><td class="info-label">Müşteri Notu:</td><td class="info-val">${custNote}</td></tr>` : ''}
+      ${custNote !== "Belirtilmedi" ? `<tr><td class="info-label" style="vertical-align: top; padding-top: 10px;">Müşteri Notu:</td><td class="info-val"><div style="font-size: 14px; font-weight: bold; color: #be123c; background: #fff1f2; border-left: 4px solid #e11d48; padding: 10px 14px; border-radius: 6px; line-height: 1.5;">🔴 ${custNote}</div></td></tr>` : ''}
     </table>
 
     <div class="section-title">TALEP EDİLEN ÜRÜNLER (${Array.isArray(items) ? items.length : 0} KALEM)</div>
@@ -3327,6 +3363,8 @@ table.items tr:nth-child(even) { background-color: #f8fafc; }
       </tr>`;
 
       let grandTotal = 0;
+      const attachments: Array<{ filename: string; contentType?: string; base64Content: string }> = [];
+
       if (Array.isArray(items)) {
         items.forEach((item, idx) => {
           const uName = item.urun_adi || "";
@@ -3343,11 +3381,44 @@ table.items tr:nth-child(even) { background-color: #f8fafc; }
           const uTotal = (item.toplam_fiyat > 0) ? `₺${Math.round(item.toplam_fiyat).toLocaleString("tr-TR")}` : "Teklif Bekliyor";
           grandTotal += (item.toplam_fiyat || 0);
 
-          let noteHtml = item.musteri_notu ? `<br><small style="color:#e11d48;"><strong>Not:</strong> ${item.musteri_notu}</small>` : '';
+          let noteHtml = item.musteri_notu ? `
+            <div style="margin-top: 8px; padding: 8px 12px; background: #fff1f2; border-left: 4px solid #e11d48; border-radius: 6px; font-size: 13px; font-weight: bold; color: #be123c; line-height: 1.4;">
+              🔴 <strong>Özel Müşteri Notu:</strong> ${item.musteri_notu}
+            </div>` : '';
+
+          let logoHtml = '';
+          if (item.logo_dosya_adi) {
+            logoHtml = `
+              <div style="margin-top: 8px; padding: 8px 12px; background: #f0fdf4; border: 1px dashed #16a34a; border-radius: 6px;">
+                <div style="font-size: 12px; font-weight: bold; color: #166534;">
+                  📎 <strong>Ekli Logo / Tasarım:</strong> <span style="color:#0b1c3f;">${item.logo_dosya_adi}</span>
+                </div>
+                ${item.logo_base64 && item.logo_base64.startsWith('data:image') ? `
+                  <div style="margin-top: 6px;">
+                    <img src="${item.logo_base64}" alt="${item.logo_dosya_adi}" style="max-height: 120px; max-width: 260px; object-fit: contain; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px;" />
+                  </div>
+                ` : ''}
+              </div>`;
+          }
+
+          if (item.logo_base64 && item.logo_dosya_adi) {
+            const parts = item.logo_base64.split(";base64,");
+            if (parts.length === 2) {
+              attachments.push({
+                filename: item.logo_dosya_adi,
+                contentType: parts[0].replace(/^data:/, "") || "application/octet-stream",
+                base64Content: parts[1]
+              });
+            }
+          }
 
           body += `<tr>
             <td>${idx + 1}</td>
-            <td><strong>${uName}</strong>${uCode}${noteHtml}</td>
+            <td>
+              <strong style="font-size: 13px; color: #0b1c3f;">${uName}</strong>${uCode}
+              ${noteHtml}
+              ${logoHtml}
+            </td>
             <td>${uDim}</td>
             <td>${uQty}</td>
             <td>${uMat}</td>
@@ -3359,9 +3430,13 @@ table.items tr:nth-child(even) { background-color: #f8fafc; }
         });
       }
 
+      const totalDisplay = grandTotal > 0 
+        ? `TOPLAM TAHMİNİ TUTAR: ₺${Math.round(grandTotal).toLocaleString("tr-TR")} (${taxNoteText})` 
+        : `TOPLAM TAHMİNİ TUTAR: Özel İmalat / Teklif İle Belirlenecektir (${taxNoteText})`;
+
       body += `</table>
     <div class="total-box">
-      <div class="total-title">TOPLAM TAHMİNİ TUTAR: ₺${Math.round(grandTotal).toLocaleString("tr-TR")} (${taxNoteText})</div>
+      <div class="total-title">${totalDisplay}</div>
       <p style="margin: 6px 0 0 0; font-size: 12px; color: #475569;">ℹ️ <strong>Teklif Notu:</strong> ${validityNoteText}</p>
     </div>
   </div>
@@ -3370,12 +3445,13 @@ table.items tr:nth-child(even) { background-color: #f8fafc; }
   </div>
 </div></body></html>`;
 
-      console.log(`[SMTP QUOTE] Dispatching quote email for ${custName} to ${to}`);
+      console.log(`[SMTP QUOTE] Dispatching quote email for ${custName} to ${to}, attachments: ${attachments.length}`);
       const sent = await sendSmtpEmailNode({
         to,
         subject,
         html: body,
-        replyTo: custEmail !== "Belirtilmedi" ? custEmail : undefined
+        replyTo: custEmail !== "Belirtilmedi" ? custEmail : undefined,
+        attachments: attachments.length > 0 ? attachments : undefined
       });
 
       return res.json({

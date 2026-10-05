@@ -20,7 +20,7 @@ $gemini_api_key = getenv('GEMINI_API_KEY') ?: '';
 
 $input = json_decode(file_get_contents('php://input'), true);
 
-function sendSmtpEmail($to, $subject, $body, $replyToEmail = '') {
+function sendSmtpEmail($to, $subject, $body, $replyToEmail = '', $attachments = []) {
     $settingsFile = __DIR__ . '/data/settings.json';
     if (!file_exists($settingsFile)) {
         $settingsFile = dirname(__DIR__, 2) . '/data/settings.json';
@@ -104,19 +104,52 @@ function sendSmtpEmail($to, $subject, $body, $replyToEmail = '') {
     fwrite($socket, "DATA\r\n");
     $readResp($socket);
 
-    $headersArr = [
-        "MIME-Version: 1.0",
-        "Content-Type: text/html; charset=UTF-8",
-        "From: {$fromName} <{$from}>",
-        "To: <{$to}>",
-        "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=",
-        "Date: " . date("r")
-    ];
-    if (!empty($replyToEmail) && filter_var($replyToEmail, FILTER_VALIDATE_EMAIL)) {
-        $headersArr[] = "Reply-To: {$replyToEmail}";
+    if (!empty($attachments)) {
+        $boundary = "====_Part_" . time() . "_" . bin2hex(random_bytes(6));
+        $headersArr = [
+            "MIME-Version: 1.0",
+            "Content-Type: multipart/mixed; boundary=\"{$boundary}\"",
+            "From: {$fromName} <{$from}>",
+            "To: <{$to}>",
+            "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=",
+            "Date: " . date("r")
+        ];
+        if (!empty($replyToEmail) && filter_var($replyToEmail, FILTER_VALIDATE_EMAIL)) {
+            $headersArr[] = "Reply-To: {$replyToEmail}";
+        }
+
+        $emailData = implode("\r\n", $headersArr) . "\r\n\r\n";
+        $emailData .= "--{$boundary}\r\n";
+        $emailData .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $emailData .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+        $emailData .= $body . "\r\n\r\n";
+
+        foreach ($attachments as $att) {
+            $attNameB64 = "=?UTF-8?B?" . base64_encode($att['filename']) . "?=";
+            $emailData .= "--{$boundary}\r\n";
+            $emailData .= "Content-Type: " . ($att['contentType'] ?: "application/octet-stream") . "; name=\"{$attNameB64}\"\r\n";
+            $emailData .= "Content-Transfer-Encoding: base64\r\n";
+            $emailData .= "Content-Disposition: attachment; filename=\"{$attNameB64}\"\r\n\r\n";
+            $cleanB64 = preg_replace('/\s+/', '', $att['base64Content']);
+            $chunked = chunk_split($cleanB64, 76, "\r\n");
+            $emailData .= $chunked . "\r\n";
+        }
+        $emailData .= "--{$boundary}--\r\n.\r\n";
+    } else {
+        $headersArr = [
+            "MIME-Version: 1.0",
+            "Content-Type: text/html; charset=UTF-8",
+            "From: {$fromName} <{$from}>",
+            "To: <{$to}>",
+            "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=",
+            "Date: " . date("r")
+        ];
+        if (!empty($replyToEmail) && filter_var($replyToEmail, FILTER_VALIDATE_EMAIL)) {
+            $headersArr[] = "Reply-To: {$replyToEmail}";
+        }
+        $emailData = implode("\r\n", $headersArr) . "\r\n\r\n" . $body . "\r\n.\r\n";
     }
 
-    $emailData = implode("\r\n", $headersArr) . "\r\n\r\n" . $body . "\r\n.\r\n";
     fwrite($socket, $emailData);
     $readResp($socket);
 
@@ -189,7 +222,7 @@ if (isset($input['action']) && $input['action'] === 'submit_rfq') {
           . "<tr><td class='info-label'>Aylık Tüketim Potansiyeli:</td><td class='info-val'>{$custMonthly}</td></tr>";
 
     if ($custNote !== 'Belirtilmedi') {
-        $body .= "<tr><td class='info-label'>Müşteri Notu:</td><td class='info-val'>{$custNote}</td></tr>";
+        $body .= "<tr><td class='info-label' style='vertical-align: top; padding-top: 10px;'>Müşteri Notu:</td><td class='info-val'><div style='font-size: 14px; font-weight: bold; color: #be123c; background: #fff1f2; border-left: 4px solid #e11d48; padding: 10px 14px; border-radius: 6px; line-height: 1.5;'>🔴 {$custNote}</div></td></tr>";
     }
 
     $itemCount = is_array($items) ? count($items) : 0;
@@ -198,6 +231,8 @@ if (isset($input['action']) && $input['action'] === 'submit_rfq') {
           . "<tr><th>#</th><th>Ürün Adı</th><th>Ölçü</th><th>Miktar</th><th>Hammadde</th><th>Baskı / Cep</th><th>Stok/Üretim</th><th>Birim Fiyat</th><th>Tutar</th></tr>";
     
     $grandTotal = 0;
+    $attachments = [];
+
     if (is_array($items)) {
         foreach ($items as $idx => $item) {
             $uName = htmlspecialchars($item['urun_adi'] ?? '');
@@ -214,28 +249,54 @@ if (isset($input['action']) && $input['action'] === 'submit_rfq') {
             $uTotal = (!empty($item['toplam_fiyat']) && $item['toplam_fiyat'] > 0) ? "₺" . number_format(round($item['toplam_fiyat'])) : "Teklif Bekliyor";
             $grandTotal += ($item['toplam_fiyat'] ?? 0);
 
-            $noteHtml = !empty($item['musteri_notu']) ? "<br><small style='color:#e11d48;'><strong>Not:</strong> " . htmlspecialchars($item['musteri_notu']) . "</small>" : "";
+            $noteHtml = !empty($item['musteri_notu']) ? "<div style='margin-top: 8px; padding: 8px 12px; background: #fff1f2; border-left: 4px solid #e11d48; border-radius: 6px; font-size: 13px; font-weight: bold; color: #be123c; line-height: 1.4;'>🔴 <strong>Özel Müşteri Notu:</strong> " . htmlspecialchars($item['musteri_notu']) . "</div>" : "";
+
+            $logoHtml = "";
+            if (!empty($item['logo_dosya_adi'])) {
+                $lName = htmlspecialchars($item['logo_dosya_adi']);
+                $logoHtml = "<div style='margin-top: 8px; padding: 8px 12px; background: #f0fdf4; border: 1px dashed #16a34a; border-radius: 6px;'><div style='font-size: 12px; font-weight: bold; color: #166534;'>📎 <strong>Ekli Logo / Tasarım:</strong> <span style='color:#0b1c3f;'>{$lName}</span></div>";
+                if (!empty($item['logo_base64']) && strpos($item['logo_base64'], 'data:image') === 0) {
+                    $logoHtml .= "<div style='margin-top: 6px;'><img src='{$item['logo_base64']}' alt='{$lName}' style='max-height: 120px; max-width: 260px; object-fit: contain; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px;' /></div>";
+                }
+                $logoHtml .= "</div>";
+            }
+
+            if (!empty($item['logo_base64']) && !empty($item['logo_dosya_adi'])) {
+                $parts = explode(';base64,', $item['logo_base64']);
+                if (count($parts) === 2) {
+                    $cType = str_replace('data:', '', $parts[0]);
+                    $attachments[] = [
+                        'filename' => $item['logo_dosya_adi'],
+                        'contentType' => $cType ?: 'application/octet-stream',
+                        'base64Content' => $parts[1]
+                    ];
+                }
+            }
 
             $itemIdx = $idx + 1;
-            $body .= "<tr><td>{$itemIdx}</td><td><strong>{$uName}</strong>{$uCode}{$noteHtml}</td><td>{$uDim}</td><td>{$uQty}</td><td>{$uMat}</td><td>{$uPrint}</td><td>{$uStock}</td><td>{$uPrice}</td><td><strong>{$uTotal}</strong></td></tr>";
+            $body .= "<tr><td>{$itemIdx}</td><td><strong style='font-size: 13px; color: #0b1c3f;'>{$uName}</strong>{$uCode}{$noteHtml}{$logoHtml}</td><td>{$uDim}</td><td>{$uQty}</td><td>{$uMat}</td><td>{$uPrint}</td><td>{$uStock}</td><td>{$uPrice}</td><td><strong>{$uTotal}</strong></td></tr>";
         }
     }
 
-    $grandTotalFormatted = number_format(round($grandTotal));
+    $totalDisplay = ($grandTotal > 0)
+        ? "TOPLAM TAHMİNİ TUTAR: ₺" . number_format(round($grandTotal)) . " ({$taxNoteText})"
+        : "TOPLAM TAHMİNİ TUTAR: Özel İmalat / Teklif İle Belirlenecektir ({$taxNoteText})";
+
     $body .= "</table>"
           . "<div class='total-box'>"
-          . "<div class='total-title'>TOPLAM TAHMİNİ TUTAR: ₺{$grandTotalFormatted} ({$taxNoteText})</div>"
+          . "<div class='total-title'>{$totalDisplay}</div>"
           . "<p style='margin: 6px 0 0 0; font-size: 12px; color: #475569;'>ℹ️ <strong>Teklif Notu:</strong> {$validityNoteText}</p>"
           . "</div></div>"
           . "<div class='footer'>Bu teklif talebi <strong>poset.com</strong> Fiyat Teklif Merkezi üzerinden otomatik oluşturulmuştur.</div>"
           . "</div></body></html>";
 
-    $sent = sendSmtpEmail($to, $subject, $body, $custEmail);
+    $sent = sendSmtpEmail($to, $subject, $body, $custEmail, $attachments);
 
     echo json_encode([
         'success' => true,
         'message' => "Teklif talebiniz {$to} adresine başarıyla iletildi.",
         'recipient' => $to,
+        'attachments_count' => count($attachments),
         'smtp_sent' => $sent
     ]);
     exit;

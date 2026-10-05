@@ -210,6 +210,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
   // Persistent Logo URL & File Name state for layered canvasing
   const [persistentLogoUrl, setPersistentLogoUrl] = useState<string | null>(null);
   const [persistentLogoName, setPersistentLogoName] = useState<string | null>(null);
+  const [persistentLogoBase64, setPersistentLogoBase64] = useState<string | null>(null);
   
   // Spec Fine-Tuning State
   const [adjustedQty, setAdjustedQty] = useState<number>(10000);
@@ -1000,6 +1001,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
       toplam_fiyat: (isCustomSize || isCurrentProductCustomOnly) ? 0 : (calculatedTotalPriceNum || 0),
       stok_durumu: (isCustomSize || isCurrentProductCustomOnly) ? "Sipariş Üzerine Üretim" : (currentStokDurumu === "Var" || currentStokDurumu === "Stokta Var" ? "Stokta Var" : currentStokDurumu),
       logo_dosya_adi: persistentLogoName,
+      logo_base64: persistentLogoBase64,
       fatura_cebi_dahil: addAdhesivePocket && isKargoCategory,
       musteri_notu: customerNote.trim() || undefined
     };
@@ -1014,12 +1016,27 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
     if (allowedExtensions.includes(ext)) {
       setUploadedFile(file);
       setPersistentLogoName(file.name);
-      if (["png", "jpg", "jpeg"].includes(ext)) {
-        const url = URL.createObjectURL(file);
-        setPersistentLogoUrl(url);
-      } else {
-        setPersistentLogoUrl("vector_placeholder");
-      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64Data = reader.result as string;
+        setPersistentLogoBase64(base64Data);
+        if (["png", "jpg", "jpeg"].includes(ext)) {
+          setPersistentLogoUrl(base64Data);
+        } else {
+          setPersistentLogoUrl("vector_placeholder");
+        }
+      };
+      reader.onerror = () => {
+        if (["png", "jpg", "jpeg"].includes(ext)) {
+          const url = URL.createObjectURL(file);
+          setPersistentLogoUrl(url);
+        } else {
+          setPersistentLogoUrl("vector_placeholder");
+        }
+      };
+      reader.readAsDataURL(file);
+
       triggerToast(`✓ Logo "${file.name}" başarıyla eklendi.`);
     } else {
       triggerToast("❌ Sadece .pdf, .ai, .cdr, .eps, .png ve .jpg formatları kabul edilir.");
@@ -1053,6 +1070,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
     setUploadedFile(null);
     setPersistentLogoUrl(null);
     setPersistentLogoName(null);
+    setPersistentLogoBase64(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     triggerToast("Logo dosyası kaldırıldı.");
   };

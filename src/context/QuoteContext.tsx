@@ -102,8 +102,12 @@ export function generateWhatsAppQuoteText(
       text += `   • *Fiyat Durumu:* Özel İmalat / Teklif Hazırlanacak\n`;
     }
 
+    if (item.logo_dosya_adi) {
+      text += `   📎 *EKLİ LOGO / TASARIM:* ${item.logo_dosya_adi}\n`;
+    }
+
     if (item.musteri_notu) {
-      text += `   • *Özel Not:* ${item.musteri_notu}\n`;
+      text += `   🔴 *ÖZEL MÜŞTERİ NOTU:* ${item.musteri_notu}\n`;
     }
     text += `\n`;
   });
@@ -124,7 +128,7 @@ export function generateWhatsAppQuoteText(
   }
 
   if (customer.note) {
-    text += `• *Müşteri Notu:* ${customer.note}\n`;
+    text += `🔴 *GENEL MÜŞTERİ NOTU:* ${customer.note}\n`;
   }
 
   text += `\n_Bu teklif talebi poset.com üzerinden oluşturulmuştur._`;
