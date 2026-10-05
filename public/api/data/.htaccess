@@ -1,0 +1,4 @@
+# Deny all direct web access to master JSON database files and backups
+<Files "*">
+    Require all denied
+</Files>

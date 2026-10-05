@@ -1,0 +1,99 @@
+[
+  {
+    "id": "cat-1",
+    "name": "E-TİCARET VE KARGO AMBALAJLARI",
+    "units": [
+      "Adet"
+    ],
+    "thickness": "Mikron",
+    "fields": {
+      "kargo_bant": true,
+      "irsaliye_cebi": true,
+      "kulp": false,
+      "koruk": true,
+      "baski": true
+    }
+  },
+  {
+    "id": "cat-2",
+    "name": "PLASTİK POŞETLER",
+    "units": [
+      "Kg",
+      "Adet"
+    ],
+    "thickness": "Mikron",
+    "fields": {
+      "kargo_bant": false,
+      "irsaliye_cebi": false,
+      "kulp": true,
+      "koruk": true,
+      "baski": true
+    }
+  },
+  {
+    "id": "cat-3",
+    "name": "KAĞIT VE KARTON ÇANTALAR",
+    "units": [
+      "Adet",
+      "Kg"
+    ],
+    "thickness": "Gr/m²",
+    "fields": {
+      "kargo_bant": false,
+      "irsaliye_cebi": false,
+      "kulp": true,
+      "koruk": true,
+      "baski": true
+    }
+  },
+  {
+    "id": "cat-4",
+    "name": "BEZ VE TELA ÇANTALAR",
+    "units": [
+      "Adet"
+    ],
+    "thickness": "Gr/m²",
+    "fields": {
+      "kargo_bant": false,
+      "irsaliye_cebi": false,
+      "kulp": true,
+      "koruk": false,
+      "baski": true
+    }
+  },
+  {
+    "id": "cat-5",
+    "name": "KORUYUCU VE ENDÜSTRİYEL AMBALAJ",
+    "units": [
+      "Adet (Rulo)",
+      "Kg (Bobin)"
+    ],
+    "thickness": "Mikron",
+    "fields": {
+      "kargo_bant": false,
+      "irsaliye_cebi": false,
+      "kulp": false,
+      "koruk": false,
+      "baski": false
+    }
+  },
+  {
+    "id": "kat_1789705822304",
+    "name": "kat-0001",
+    "slug": "k",
+    "units": [
+      "Adet"
+    ],
+    "thickness_unit": "Mikron",
+    "thickness": "Mikron",
+    "default_moq": 1000,
+    "fields": {
+      "kargo_bant": false,
+      "kulp": true,
+      "koruk": true,
+      "irsaliye_cebi": false,
+      "baski": true
+    },
+    "allowed_materials": []
+  }
+]

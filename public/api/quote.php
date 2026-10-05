@@ -21,12 +21,23 @@ $gemini_api_key = getenv('GEMINI_API_KEY') ?: '';
 $input = json_decode(file_get_contents('php://input'), true);
 
 function sendSmtpEmail($to, $subject, $body, $replyToEmail = '', $attachments = []) {
-    $settingsFile = __DIR__ . '/data/settings.json';
-    if (!file_exists($settingsFile)) {
-        $settingsFile = dirname(__DIR__, 2) . '/data/settings.json';
+    $docRoot = !empty($_SERVER['DOCUMENT_ROOT']) ? rtrim($_SERVER['DOCUMENT_ROOT'], '/\\') : '';
+    $candidatePaths = array_filter([
+        __DIR__ . '/../data/settings.json',
+        __DIR__ . '/data/settings.json',
+        $docRoot ? $docRoot . '/data/settings.json' : null,
+        $docRoot ? $docRoot . '/public/data/settings.json' : null,
+        dirname(__DIR__, 2) . '/data/settings.json'
+    ]);
+    $settingsFile = '';
+    foreach ($candidatePaths as $p) {
+        if ($p && file_exists($p)) {
+            $settingsFile = $p;
+            break;
+        }
     }
     $cfg = [];
-    if (file_exists($settingsFile)) {
+    if (!empty($settingsFile) && file_exists($settingsFile)) {
         $data = json_decode(file_get_contents($settingsFile), true);
         if (!empty($data['smtp']) && is_array($data['smtp'])) {
             $cfg = $data['smtp'];
@@ -159,12 +170,23 @@ function sendSmtpEmail($to, $subject, $body, $replyToEmail = '', $attachments = 
 }
 
 if (isset($input['action']) && $input['action'] === 'submit_rfq') {
-    $settingsFile = __DIR__ . '/data/settings.json';
-    if (!file_exists($settingsFile)) {
-        $settingsFile = dirname(__DIR__, 2) . '/data/settings.json';
+    $docRoot = !empty($_SERVER['DOCUMENT_ROOT']) ? rtrim($_SERVER['DOCUMENT_ROOT'], '/\\') : '';
+    $candidatePaths = array_filter([
+        __DIR__ . '/../data/settings.json',
+        __DIR__ . '/data/settings.json',
+        $docRoot ? $docRoot . '/data/settings.json' : null,
+        $docRoot ? $docRoot . '/public/data/settings.json' : null,
+        dirname(__DIR__, 2) . '/data/settings.json'
+    ]);
+    $settingsFile = '';
+    foreach ($candidatePaths as $p) {
+        if ($p && file_exists($p)) {
+            $settingsFile = $p;
+            break;
+        }
     }
     $savedSettings = [];
-    if (file_exists($settingsFile)) {
+    if (!empty($settingsFile) && file_exists($settingsFile)) {
         $savedSettings = json_decode(file_get_contents($settingsFile), true) ?: [];
     }
 

@@ -37,6 +37,9 @@
 
   RewriteRule ^api/settings(/.*)?$ api/api.php?action=settings [QSA,L]
 
+  # Route /api/quote requests directly to api/quote.php
+  RewriteRule ^api/quote(/.*)?$ api/quote.php [QSA,L]
+
   # Fallback any other /api/* requests to api/api.php
   RewriteRule ^api/(.*)$ api/api.php?action=$1 [QSA,L]
 

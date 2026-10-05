@@ -1,8 +1,17 @@
 {
   "rate_mode": "api",
   "collect_api_key": "5FzmRhNGQrHuKmbf03PmYU:0lXeOca14Soi4nfEc81MH1",
-  "last_updated": "20.09.2026 20:50:09",
-  "usd_try_rate": 48.7883,
-  "dolar_kuru": 48.7883,
-  "usd_try": 48.7883
+  "last_updated": "05.10.2026 06:05:35",
+  "usd_try_rate": 49.166,
+  "dolar_kuru": 49.166,
+  "usd_try": 49.166,
+  "smtp": {
+    "host": "server.reksa.net",
+    "port": 465,
+    "secure": true,
+    "user": "info@poset.com",
+    "pass": "z4DdYyvU32XD",
+    "fromName": "Poset.com Teklif Sistemi",
+    "fromEmail": "info@poset.com"
+  }
 }
