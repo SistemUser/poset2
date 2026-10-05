@@ -2867,10 +2867,10 @@ async function getEffectiveSmtpConfig() {
     host: s.host || process.env.SMTP_HOST || "server.reksa.net",
     port: parseInt(String(s.port || process.env.SMTP_PORT || "465"), 10),
     secure: s.secure !== undefined ? Boolean(s.secure) : true,
-    user: s.user || process.env.SMTP_USER || "info@reksa.net",
+    user: s.user || process.env.SMTP_USER || "info@poset.com",
     pass: s.pass || process.env.SMTP_PASS || "z4DdYyvU32XD",
     fromName: s.fromName || "Poset.com Teklif Sistemi",
-    fromEmail: s.fromEmail || s.user || process.env.SMTP_USER || "info@reksa.net"
+    fromEmail: s.fromEmail || s.user || process.env.SMTP_USER || "info@poset.com"
   };
 }
 
@@ -2895,7 +2895,7 @@ function sendSmtpEmailNode(options: {
     const cfg = options.smtpConfig || await getEffectiveSmtpConfig();
     const host = cfg.host || "server.reksa.net";
     const port = parseInt(String(cfg.port || "465"), 10);
-    const user = cfg.user || "info@reksa.net";
+    const user = cfg.user || "info@poset.com";
     const pass = cfg.pass || "";
     const fromName = cfg.fromName || "Poset.com Teklif Sistemi";
     const fromAddr = cfg.fromEmail || user;
@@ -3022,6 +3022,51 @@ function sendSmtpEmailNode(options: {
   });
 }
 
+app.get(["/api/admin/rfq", "/api/admin.php"], async (req, res, next) => {
+  if (req.path.includes("admin.php") && req.query.action !== "rfq") {
+    return next();
+  }
+  try {
+    const settings = await getSettingsData();
+    const defaultRfq = {
+      whatsappNumber: "905424086160",
+      notificationEmail: "info@poset.com",
+      showMonthlyConsumption: true,
+      requireMonthlyConsumption: false,
+      taxNote: "KDV Hariç",
+      validityNote: "Fiyatlarımız 15 gün geçerlidir.",
+      submitButtonText: "Teklif Talebini Gönder"
+    };
+    return res.json({ success: true, rfq: { ...defaultRfq, ...(settings.rfq || {}) } });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err?.message || "Hata oluştu." });
+  }
+});
+
+app.post(["/api/admin/rfq", "/api/admin.php"], async (req, res, next) => {
+  const action = req.query.action || req.body?.action;
+  if (req.path.includes("admin.php") && action !== "rfq") {
+    return next();
+  }
+  try {
+    const body = req.body || {};
+    const settings = await getSettingsData();
+    settings.rfq = {
+      whatsappNumber: body.whatsappNumber ? String(body.whatsappNumber).trim() : "905424086160",
+      notificationEmail: body.notificationEmail ? String(body.notificationEmail).trim() : "info@poset.com",
+      showMonthlyConsumption: body.showMonthlyConsumption !== undefined ? Boolean(body.showMonthlyConsumption) : true,
+      requireMonthlyConsumption: body.requireMonthlyConsumption !== undefined ? Boolean(body.requireMonthlyConsumption) : false,
+      taxNote: body.taxNote ? String(body.taxNote).trim() : "KDV Hariç",
+      validityNote: body.validityNote ? String(body.validityNote).trim() : "Fiyatlarımız 15 gün geçerlidir.",
+      submitButtonText: body.submitButtonText ? String(body.submitButtonText).trim() : "Teklif Talebini Gönder"
+    };
+    await saveSettingsData(settings);
+    return res.json({ success: true, rfq: settings.rfq });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err?.message || "RFQ ayarları kaydedilemedi." });
+  }
+});
+
 app.get(["/api/admin/smtp", "/api/admin.php"], async (req, res, next) => {
   if (req.path.includes("admin.php") && req.query.action !== "smtp") {
     return next();
@@ -3046,10 +3091,10 @@ app.post(["/api/admin/smtp", "/api/admin.php"], async (req, res, next) => {
       host: body.host ? String(body.host).trim() : "server.reksa.net",
       port: body.port ? parseInt(String(body.port), 10) : 465,
       secure: body.secure !== undefined ? Boolean(body.secure) : true,
-      user: body.user ? String(body.user).trim() : "info@reksa.net",
+      user: body.user ? String(body.user).trim() : "info@poset.com",
       pass: body.pass ? String(body.pass).trim() : "",
       fromName: body.fromName ? String(body.fromName).trim() : "Poset.com Teklif Sistemi",
-      fromEmail: body.fromEmail ? String(body.fromEmail).trim() : (body.user ? String(body.user).trim() : "info@reksa.net")
+      fromEmail: body.fromEmail ? String(body.fromEmail).trim() : (body.user ? String(body.user).trim() : "info@poset.com")
     };
     await saveSettingsData(settings);
     return res.json({ success: true, smtp: settings.smtp });
@@ -3066,7 +3111,7 @@ app.post(["/api/admin/test-smtp", "/api/admin.php"], async (req, res, next) => {
   try {
     const body = req.body || {};
     const effectiveCfg = body.host ? body : await getEffectiveSmtpConfig();
-    const testTo = body.testEmail || effectiveCfg.fromEmail || effectiveCfg.user || "info@reksa.net";
+    const testTo = body.testEmail || effectiveCfg.fromEmail || effectiveCfg.user || "info@poset.com";
 
     const result = await sendSmtpEmailNode({
       to: testTo,
@@ -3295,11 +3340,12 @@ app.post(["/api/quote", "/api/quote.php"], async (req, res) => {
     if (action === "submit_rfq") {
       const settings = await getSettingsData();
       const to = req.body?.recipient_email 
+        || settings.rfq?.notificationEmail
         || settings.notificationEmail 
         || settings.smtp?.toEmail 
         || settings.smtp?.fromEmail 
         || process.env.SMTP_RECIPIENT 
-        || "info@reksa.net";
+        || "info@poset.com";
 
       const custName = customer?.name || "Belirtilmedi";
       const custPhone = customer?.phone || "Belirtilmedi";

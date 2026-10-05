@@ -327,6 +327,7 @@ if (empty($action)) {
         $path = parse_url($u, PHP_URL_PATH) ?? '';
         if (str_contains($path, '/test-smtp')) { $action = 'test-smtp'; break; }
         if (str_contains($path, '/smtp')) { $action = 'smtp'; break; }
+        if (str_contains($path, '/rfq')) { $action = 'rfq'; break; }
         if (str_contains($path, '/refresh-rate')) { $action = 'refresh-rate'; break; }
         if (str_contains($path, '/settings')) { $action = 'settings'; break; }
         if (str_contains($path, '/products')) { $action = 'products'; break; }
@@ -392,7 +393,7 @@ if ($action === 'settings') {
 function sendAdminSmtpEmail($cfg, $to, $subject, $body) {
     $rawHost = !empty($cfg['host']) ? $cfg['host'] : 'server.reksa.net';
     $smtpPort = !empty($cfg['port']) ? intval($cfg['port']) : 465;
-    $username = !empty($cfg['user']) ? $cfg['user'] : 'info@reksa.net';
+    $username = !empty($cfg['user']) ? $cfg['user'] : 'info@poset.com';
     $password = !empty($cfg['pass']) ? $cfg['pass'] : '';
     $from = !empty($cfg['fromEmail']) ? $cfg['fromEmail'] : $username;
     $fromName = !empty($cfg['fromName']) ? $cfg['fromName'] : 'Poset.com Teklif Sistemi';
@@ -469,6 +470,38 @@ function sendAdminSmtpEmail($cfg, $to, $subject, $body) {
     return ['success' => true];
 }
 
+if ($action === 'rfq') {
+    $settings = getDbData($settingsFile, $defaultSettings);
+    $defaultRfq = [
+        'whatsappNumber' => '905424086160',
+        'notificationEmail' => 'info@poset.com',
+        'showMonthlyConsumption' => true,
+        'requireMonthlyConsumption' => false,
+        'taxNote' => 'KDV Hariç',
+        'validityNote' => 'Fiyatlarımız 15 gün geçerlidir.',
+        'submitButtonText' => 'Teklif Talebini Gönder'
+    ];
+    if ($method === 'POST') {
+        $rfq = [
+            'whatsappNumber' => trim((string)($input['whatsappNumber'] ?? $defaultRfq['whatsappNumber'])),
+            'notificationEmail' => trim((string)($input['notificationEmail'] ?? $defaultRfq['notificationEmail'])),
+            'showMonthlyConsumption' => isset($input['showMonthlyConsumption']) ? (bool)$input['showMonthlyConsumption'] : true,
+            'requireMonthlyConsumption' => isset($input['requireMonthlyConsumption']) ? (bool)$input['requireMonthlyConsumption'] : false,
+            'taxNote' => trim((string)($input['taxNote'] ?? $defaultRfq['taxNote'])),
+            'validityNote' => trim((string)($input['validityNote'] ?? $defaultRfq['validityNote'])),
+            'submitButtonText' => trim((string)($input['submitButtonText'] ?? $defaultRfq['submitButtonText']))
+        ];
+        $settings['rfq'] = $rfq;
+        saveDbData($settingsFile, $settings);
+        echo json_encode(['success' => true, 'rfq' => $rfq], JSON_UNESCAPED_UNICODE);
+        exit;
+    } else {
+        $rfq = isset($settings['rfq']) && is_array($settings['rfq']) ? array_merge($defaultRfq, $settings['rfq']) : $defaultRfq;
+        echo json_encode(['success' => true, 'rfq' => $rfq], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
 if ($action === 'smtp') {
     $settings = getDbData($settingsFile, $defaultSettings);
     if ($method === 'POST') {
@@ -476,10 +509,10 @@ if ($action === 'smtp') {
             'host' => trim((string)($input['host'] ?? 'server.reksa.net')),
             'port' => intval($input['port'] ?? 465),
             'secure' => isset($input['secure']) ? (bool)$input['secure'] : true,
-            'user' => trim((string)($input['user'] ?? 'info@reksa.net')),
+            'user' => trim((string)($input['user'] ?? 'info@poset.com')),
             'pass' => trim((string)($input['pass'] ?? '')),
             'fromName' => trim((string)($input['fromName'] ?? 'Poset.com Teklif Sistemi')),
-            'fromEmail' => trim((string)($input['fromEmail'] ?? ($input['user'] ?? 'info@reksa.net')))
+            'fromEmail' => trim((string)($input['fromEmail'] ?? ($input['user'] ?? 'info@poset.com')))
         ];
         $settings['smtp'] = $smtp;
         saveDbData($settingsFile, $settings);
@@ -490,10 +523,10 @@ if ($action === 'smtp') {
             'host' => 'server.reksa.net',
             'port' => 465,
             'secure' => true,
-            'user' => 'info@reksa.net',
+            'user' => 'info@poset.com',
             'pass' => 'z4DdYyvU32XD',
             'fromName' => 'Poset.com Teklif Sistemi',
-            'fromEmail' => 'info@reksa.net'
+            'fromEmail' => 'info@poset.com'
         ];
         $smtp = isset($settings['smtp']) && is_array($settings['smtp']) ? array_merge($defaultSmtp, $settings['smtp']) : $defaultSmtp;
         echo json_encode(['success' => true, 'smtp' => $smtp], JSON_UNESCAPED_UNICODE);
@@ -504,7 +537,7 @@ if ($action === 'smtp') {
 if ($action === 'test-smtp') {
     $settings = getDbData($settingsFile, $defaultSettings);
     $cfg = !empty($input['host']) ? $input : ($settings['smtp'] ?? []);
-    $testTo = !empty($input['testEmail']) ? trim($input['testEmail']) : (!empty($cfg['fromEmail']) ? $cfg['fromEmail'] : (!empty($cfg['user']) ? $cfg['user'] : 'info@reksa.net'));
+    $testTo = !empty($input['testEmail']) ? trim($input['testEmail']) : (!empty($cfg['fromEmail']) ? $cfg['fromEmail'] : (!empty($cfg['user']) ? $cfg['user'] : 'info@poset.com'));
 
     $body = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">'
           . '<div style="background-color: #0b1c3f; color: white; padding: 20px; text-align: center;"><h2 style="margin: 0; font-size: 20px;">poset.com Mail Sunucu Testi</h2></div>'

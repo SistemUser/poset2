@@ -268,7 +268,7 @@ export interface Article {
 }
 export interface RfqSettings {
   whatsappNumber: string;             // Varsayılan: '905424086160'
-  notificationEmail: string;          // Varsayılan: 'info@reksa.net'
+  notificationEmail: string;          // Varsayılan: 'info@poset.com'
   showMonthlyConsumption: boolean;    // Varsayılan: true
   requireMonthlyConsumption: boolean; // Varsayılan: false
   taxNote: string;                    // Varsayılan: 'KDV Hariç'
@@ -278,7 +278,7 @@ export interface RfqSettings {
 
 export const DEFAULT_RFQ_SETTINGS: RfqSettings = {
   whatsappNumber: '905424086160',
-  notificationEmail: 'info@reksa.net',
+  notificationEmail: 'info@poset.com',
   showMonthlyConsumption: true,
   requireMonthlyConsumption: false,
   taxNote: 'KDV Hariç',
@@ -309,8 +309,8 @@ export const DEFAULT_SMTP_SETTINGS: SmtpSettings = {
   host: 'server.reksa.net',
   port: 465,
   secure: true,
-  user: 'info@reksa.net',
+  user: 'info@poset.com',
   pass: 'z4DdYyvU32XD',
   fromName: 'Poset.com Teklif Sistemi',
-  fromEmail: 'info@reksa.net'
+  fromEmail: 'info@poset.com'
 };

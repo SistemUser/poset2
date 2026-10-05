@@ -81,7 +81,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
 
       // Sunucuya arka planda RFQ kaydını ve paneldeki e-posta adresine bildirimi ilet
       try {
-        const targetEmail = settings.notificationEmail || "info@reksa.net";
+        const targetEmail = settings.notificationEmail || "info@poset.com";
         const quotePayload = JSON.stringify({
           action: "submit_rfq",
           recipient_email: targetEmail,

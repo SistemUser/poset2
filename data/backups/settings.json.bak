@@ -1,10 +1,10 @@
 {
   "rate_mode": "api",
   "collect_api_key": "5FzmRhNGQrHuKmbf03PmYU:0lXeOca14Soi4nfEc81MH1",
-  "last_updated": "05.10.2026 05:56:57",
-  "usd_try_rate": 49.1677,
-  "dolar_kuru": 49.1677,
-  "usd_try": 49.1677,
+  "last_updated": "05.10.2026 06:05:35",
+  "usd_try_rate": 49.166,
+  "dolar_kuru": 49.166,
+  "usd_try": 49.166,
   "smtp": {
     "host": "server.reksa.net",
     "port": 465,

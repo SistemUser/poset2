@@ -227,12 +227,54 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
   });
   const [isSavingRfq, setIsSavingRfq] = useState(false);
 
-  const handleSaveRfqSettings = (e: React.FormEvent) => {
+  useEffect(() => {
+    const fetchRfq = async () => {
+      const endpoints = [
+        getApiEndpoint("api/admin/rfq"),
+        getApiEndpoint("api/admin.php?action=rfq"),
+        "/api/admin/rfq",
+        "/api/admin.php?action=rfq"
+      ];
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep);
+          const text = await res.text();
+          if (text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
+            const data = JSON.parse(text);
+            if (data?.success && data?.rfq) {
+              setRfqSettings(prev => ({ ...prev, ...data.rfq }));
+              localStorage.setItem("poset_rfq_settings", JSON.stringify({ ...DEFAULT_RFQ_SETTINGS, ...data.rfq }));
+              break;
+            }
+          }
+        } catch (e) {}
+      }
+    };
+    fetchRfq();
+  }, []);
+
+  const handleSaveRfqSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingRfq(true);
     try {
       localStorage.setItem("poset_rfq_settings", JSON.stringify(rfqSettings));
       window.dispatchEvent(new Event("rfq_settings_updated"));
+
+      const endpoints = [
+        getApiEndpoint("api/admin/rfq"),
+        getApiEndpoint("api/admin.php?action=rfq"),
+        "/api/admin/rfq",
+        "/api/admin.php?action=rfq"
+      ];
+      for (const ep of endpoints) {
+        try {
+          await fetch(ep, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(rfqSettings)
+          });
+        } catch (e) {}
+      }
       triggerToast("✓ Teklif Formu & İletişim Ayarları başarıyla kaydedildi.");
     } catch (err) {
       alert("Ayarlar kaydedilirken hata oluştu.");
@@ -2761,7 +2803,7 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
                         type="email"
                         value={rfqSettings.notificationEmail}
                         onChange={(e) => setRfqSettings(prev => ({ ...prev, notificationEmail: e.target.value }))}
-                        placeholder="info@reksa.net"
+                        placeholder="info@poset.com"
                         required
                         className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-4 py-3 rounded-xl focus:bg-white focus:border-blue-600 outline-none"
                       />
@@ -2930,13 +2972,13 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
                   <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
                     Gönderici E-Posta / Kullanıcı Adı *
                   </label>
-                  <div className="relative">
+                    <div className="relative">
                     <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
                     <input
                       type="text"
                       value={smtpSettings.user}
                       onChange={(e) => setSmtpSettings(prev => ({ ...prev, user: e.target.value }))}
-                      placeholder="info@reksa.net"
+                      placeholder="info@poset.com"
                       required
                       className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-4 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
                     />
@@ -2997,7 +3039,7 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
                     type="email"
                     value={smtpSettings.fromEmail}
                     onChange={(e) => setSmtpSettings(prev => ({ ...prev, fromEmail: e.target.value }))}
-                    placeholder="info@reksa.net"
+                    placeholder="info@poset.com"
                     className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm px-3.5 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
                   />
                   <p className="text-[11px] text-slate-500 font-medium">Boş bırakılırsa gönderici e-posta adresi kullanılır.</p>

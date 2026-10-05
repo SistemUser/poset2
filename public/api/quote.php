@@ -46,7 +46,7 @@ function sendSmtpEmail($to, $subject, $body, $replyToEmail = '', $attachments = 
 
     $rawHost = !empty($cfg['host']) ? $cfg['host'] : (getenv('SMTP_HOST') ?: 'server.reksa.net');
     $smtpPort = !empty($cfg['port']) ? intval($cfg['port']) : (getenv('SMTP_PORT') ? intval(getenv('SMTP_PORT')) : 465);
-    $username = !empty($cfg['user']) ? $cfg['user'] : (getenv('SMTP_USER') ?: 'info@reksa.net');
+    $username = !empty($cfg['user']) ? $cfg['user'] : (getenv('SMTP_USER') ?: 'info@poset.com');
     $password = !empty($cfg['pass']) ? $cfg['pass'] : (getenv('SMTP_PASS') ?: 'z4DdYyvU32XD');
     $from = !empty($cfg['fromEmail']) ? $cfg['fromEmail'] : $username;
     $fromName = !empty($cfg['fromName']) ? $cfg['fromName'] : 'Poset.com Teklif Sistemi';
@@ -192,11 +192,13 @@ if (isset($input['action']) && $input['action'] === 'submit_rfq') {
 
     $to = !empty($input['recipient_email']) && filter_var($input['recipient_email'], FILTER_VALIDATE_EMAIL)
         ? $input['recipient_email']
-        : (!empty($savedSettings['notificationEmail'])
-            ? $savedSettings['notificationEmail']
-            : (!empty($savedSettings['smtp']['fromEmail'])
-                ? $savedSettings['smtp']['fromEmail']
-                : (getenv('SMTP_RECIPIENT') ?: 'info@reksa.net')));
+        : (!empty($savedSettings['rfq']['notificationEmail'])
+            ? $savedSettings['rfq']['notificationEmail']
+            : (!empty($savedSettings['notificationEmail'])
+                ? $savedSettings['notificationEmail']
+                : (!empty($savedSettings['smtp']['fromEmail'])
+                    ? $savedSettings['smtp']['fromEmail']
+                    : (getenv('SMTP_RECIPIENT') ?: 'info@poset.com'))));
 
     $customer = isset($input['customer']) ? $input['customer'] : [];
     $items = isset($input['items']) ? $input['items'] : [];
