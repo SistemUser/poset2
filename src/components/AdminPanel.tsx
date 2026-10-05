@@ -257,16 +257,26 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
 
   useEffect(() => {
     const fetchSmtp = async () => {
-      try {
-        const isProd = (import.meta as any).env?.PROD;
-        const endpoint = isProd ? "/api/admin.php?action=smtp" : "/api/admin/smtp";
-        const res = await fetch(endpoint);
-        const data = await res.json();
-        if (data?.success && data?.smtp) {
-          setSmtpSettings(prev => ({ ...prev, ...data.smtp }));
-          localStorage.setItem("poset_smtp_settings", JSON.stringify({ ...DEFAULT_SMTP_SETTINGS, ...data.smtp }));
-        }
-      } catch (err) {}
+      const endpoints = [
+        getApiEndpoint("api/admin/smtp"),
+        getApiEndpoint("api/admin.php?action=smtp"),
+        "/api/admin/smtp",
+        "/api/admin.php?action=smtp"
+      ];
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep);
+          const text = await res.text();
+          if (text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
+            const data = JSON.parse(text);
+            if (data?.success && data?.smtp) {
+              setSmtpSettings(prev => ({ ...prev, ...data.smtp }));
+              localStorage.setItem("poset_smtp_settings", JSON.stringify({ ...DEFAULT_SMTP_SETTINGS, ...data.smtp }));
+              break;
+            }
+          }
+        } catch (e) {}
+      }
     };
     fetchSmtp();
   }, []);
@@ -277,21 +287,37 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
     setSmtpTestResult(null);
     try {
       localStorage.setItem("poset_smtp_settings", JSON.stringify(smtpSettings));
-      const isProd = (import.meta as any).env?.PROD;
-      const endpoint = isProd ? "/api/admin.php?action=smtp" : "/api/admin/smtp";
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(smtpSettings)
-      });
-      const data = await res.json();
-      if (data?.success) {
+      const endpoints = [
+        getApiEndpoint("api/admin/smtp"),
+        getApiEndpoint("api/admin.php?action=smtp"),
+        "/api/admin/smtp",
+        "/api/admin.php?action=smtp"
+      ];
+      let savedOnServer = false;
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(smtpSettings)
+          });
+          const text = await res.text();
+          if (text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
+            const data = JSON.parse(text);
+            if (data?.success) {
+              savedOnServer = true;
+              break;
+            }
+          }
+        } catch (e) {}
+      }
+      if (savedOnServer) {
         triggerToast("✓ Mail sunucu (SMTP) ayarları başarıyla kaydedildi.");
       } else {
-        triggerToast("✓ Mail ayarları kaydedildi.");
+        triggerToast("✓ Mail ayarları yerel olarak kaydedildi.");
       }
     } catch (err) {
-      triggerToast("✓ Mail ayarları yerel olarak saklandı.");
+      triggerToast("✓ Mail ayarları kaydedildi.");
     } finally {
       setIsSavingSmtp(false);
     }
@@ -301,18 +327,49 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
     setIsTestingSmtp(true);
     setSmtpTestResult(null);
     try {
-      const isProd = (import.meta as any).env?.PROD;
-      const endpoint = isProd ? "/api/admin.php?action=test-smtp" : "/api/admin/test-smtp";
       const targetTestEmail = testEmailAddress.trim() || rfqSettings.notificationEmail || smtpSettings.fromEmail || smtpSettings.user;
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...smtpSettings,
-          testEmail: targetTestEmail
-        })
+      const payload = JSON.stringify({
+        ...smtpSettings,
+        testEmail: targetTestEmail
       });
-      const data = await res.json();
+
+      const endpoints = [
+        getApiEndpoint("api/admin/test-smtp"),
+        getApiEndpoint("api/admin.php?action=test-smtp"),
+        "/api/admin/test-smtp",
+        "/api/admin.php?action=test-smtp"
+      ];
+
+      let data: any = null;
+      let lastErrorMessage = "";
+
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: payload
+          });
+          const text = await res.text();
+          if (text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
+            data = JSON.parse(text);
+            break;
+          } else if (text && text.length > 0) {
+            lastErrorMessage = text.slice(0, 150);
+          }
+        } catch (err: any) {
+          lastErrorMessage = err?.message || "";
+        }
+      }
+
+      if (!data) {
+        setSmtpTestResult({
+          success: false,
+          message: `✕ Sunucu Yanıtı Alınamadı: ${lastErrorMessage || "Sunucuya erişilemiyor veya PHP/Node servisi yanıt vermiyor."}`
+        });
+        return;
+      }
+
       if (data?.success) {
         setSmtpTestResult({
           success: true,

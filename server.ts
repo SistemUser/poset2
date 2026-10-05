@@ -16,9 +16,13 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 
 app.use(express.json());
 
-// Top-level static asset serving for public directory and images
-app.use(express.static(path.join(process.cwd(), 'public')));
-app.use(express.static('public'));
+// Top-level static asset serving for public directory (excluding /api so routes are never bypassed by raw PHP files)
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    return next();
+  }
+  express.static(path.join(process.cwd(), 'public'))(req, res, next);
+});
 app.use('/images', express.static(path.join(process.cwd(), 'public', 'images')));
 
 // Lazy-initialization of Gemini client for robust recovery
@@ -2991,8 +2995,10 @@ function sendSmtpEmailNode(options: {
   });
 }
 
-// SMTP Settings Endpoints
-app.get("/api/admin/smtp", async (req, res) => {
+app.get(["/api/admin/smtp", "/api/admin.php"], async (req, res, next) => {
+  if (req.path.includes("admin.php") && req.query.action !== "smtp") {
+    return next();
+  }
   try {
     const config = await getEffectiveSmtpConfig();
     return res.json({ success: true, smtp: config });
@@ -3001,7 +3007,11 @@ app.get("/api/admin/smtp", async (req, res) => {
   }
 });
 
-app.post("/api/admin/smtp", async (req, res) => {
+app.post(["/api/admin/smtp", "/api/admin.php"], async (req, res, next) => {
+  const action = req.query.action || req.body?.action;
+  if (req.path.includes("admin.php") && action !== "smtp") {
+    return next();
+  }
   try {
     const body = req.body || {};
     const settings = await getSettingsData();
@@ -3021,7 +3031,11 @@ app.post("/api/admin/smtp", async (req, res) => {
   }
 });
 
-app.post("/api/admin/test-smtp", async (req, res) => {
+app.post(["/api/admin/test-smtp", "/api/admin.php"], async (req, res, next) => {
+  const action = req.query.action || req.body?.action;
+  if (req.path.includes("admin.php") && action !== "test-smtp") {
+    return next();
+  }
   try {
     const body = req.body || {};
     const effectiveCfg = body.host ? body : await getEffectiveSmtpConfig();
