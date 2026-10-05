@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+*.zip
+scratch/
+jules_session*/

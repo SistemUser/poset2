@@ -3,33 +3,78 @@ import Header from "./components/Header";
 import HomeTab from "./components/HomeTab";
 import CatalogTab from "./components/CatalogTab";
 import AssistantTab from "./components/AssistantTab";
+import GuideTab from "./components/GuideTab";
+import AboutTab from "./components/AboutTab";
+import ReferencesTab from "./components/ReferencesTab";
+import ContactTab from "./components/ContactTab";
 import AdminPanel from "./components/AdminPanel";
+import Footer from "./components/Footer";
 import { AppProvider } from "./AppContext";
 import { Product, QuoteSpec } from "./types";
 import { getSubfolderPrefix } from "./utils/urlHelper";
 import { X, Sparkles, ShoppingBag, Trash } from "lucide-react";
 import { motion } from "motion/react";
 
+export type TabType = "home" | "catalog" | "assistant" | "admin" | "guide" | "about" | "references" | "contact";
+
+const VALID_TABS: TabType[] = ["home", "catalog", "assistant", "admin", "guide", "about", "references", "contact"];
+
+const TAB_HASH_MAP: Record<string, string> = {
+  home: '',
+  catalog: 'urunler',
+  guide: 'rehber',
+  about: 'kurumsal',
+  references: 'referanslar',
+  contact: 'iletisim',
+  assistant: 'teklif',
+  admin: 'yonetim'
+};
+
+const HASH_TO_TAB: Record<string, string> = {
+  '': 'home',
+  'urunler': 'catalog',
+  'catalog': 'catalog',
+  'rehber': 'guide',
+  'guide': 'guide',
+  'kurumsal': 'about',
+  'about': 'about',
+  'referanslar': 'references',
+  'references': 'references',
+  'iletisim': 'contact',
+  'contact': 'contact',
+  'teklif': 'assistant',
+  'assistant': 'assistant',
+  'yonetim': 'admin',
+  'admin': 'admin'
+};
+
 export default function App() {
-  const [currentTab, setTab] = useState<"home" | "catalog" | "assistant" | "admin">(() => {
+  const getInitialTab = (): TabType => {
     if (typeof window !== "undefined") {
-      const pathname = window.location.pathname.toLowerCase();
-      if (pathname.includes("yonetim") || pathname.includes("admin")) {
-        return "admin";
+      const path = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.replace('#', '').trim().toLowerCase();
+
+      if (path === '/yonetim' || path === '/admin' || hash === 'yonetim' || hash === 'admin') {
+        return 'admin';
       }
-      const searchParams = new URLSearchParams(window.location.search);
-      if (pathname.includes("teklif") || searchParams.has("sku") || searchParams.has("baski_durumu")) {
-        return "assistant";
+      if (hash && HASH_TO_TAB[hash]) {
+        return HASH_TO_TAB[hash] as TabType;
+      }
+      const saved = (localStorage.getItem("poset_active_tab") || sessionStorage.getItem("poset_active_tab")) as TabType;
+      if (saved && saved !== 'admin' && VALID_TABS.includes(saved)) {
+        return saved;
       }
     }
     return "home";
-  });
+  };
+
+  const [currentTab, setTab] = useState<TabType>(getInitialTab);
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
   const [quotationList, setQuotationList] = useState<Product[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [activeInitialPrompt, setActiveInitialPrompt] = useState<string | null>(null);
 
-  const handleSetTab = (tab: "home" | "catalog" | "assistant" | "admin", categoryKey?: string | null) => {
+  const handleSetTab = (tab: TabType, categoryKey?: string | null) => {
     setTab(tab);
     if (categoryKey !== undefined) {
       setSelectedCategoryKey(categoryKey);
@@ -37,48 +82,71 @@ export default function App() {
       setSelectedCategoryKey(null);
     }
 
-    const subfolder = getSubfolderPrefix();
-    if (tab === "admin") {
-      window.history.pushState({}, "", `${subfolder}/yonetim`);
-    } else if (tab === "assistant") {
-      window.history.pushState({}, "", `${subfolder}/teklif`);
-    } else if (tab === "home") {
-      window.history.pushState({}, "", `${subfolder}/` || "/");
+    if (typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(new CustomEvent('poset:sync'));
+      } catch (e) {}
+
+      localStorage.setItem("poset_active_tab", tab);
+      sessionStorage.setItem("poset_active_tab", tab);
+      
+      const hash = TAB_HASH_MAP[tab] || '';
+      const cleanUrl = hash ? `/#${hash}` : '/';
+      
+      try {
+        window.history.replaceState(null, '', cleanUrl);
+      } catch (e) {
+        console.error("History replaceState failed:", e);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
   React.useEffect(() => {
-    const handleLocationChange = () => {
-      const pathname = window.location.pathname.toLowerCase();
-      const searchParams = new URLSearchParams(window.location.search);
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname.toLowerCase();
+      const rawHash = window.location.hash.replace('#', '').trim().toLowerCase();
 
-      if (pathname.includes("yonetim") || pathname.includes("admin")) {
-        setTab("admin");
-      } else if (pathname.includes("teklif") || searchParams.has("sku") || searchParams.has("baski_durumu")) {
-        const sku = searchParams.get("sku");
-        if (sku) {
-          setActiveInitialPrompt(`sku:${sku}`);
-        } else {
-          const urun = searchParams.get("urun") || "";
-          const malzeme = searchParams.get("malzeme") || "";
-          const kalinlik = searchParams.get("kalinlik") || "";
-          const baskiDurumu = searchParams.get("baski_durumu") || "Baskılı";
-          
-          let customPrompt = "";
-          if (urun) {
-            customPrompt = `${urun} için malzeme: ${malzeme}, kalınlık: ${kalinlik}. baski_durumu: ${baskiDurumu} detaylarına göre özel fiyat teklifi almak istiyorum.`;
-          } else {
-            customPrompt = `Yeni marka logolu poşet tasarımı ve teknik şartnamesi hazırlatmak istiyorum. baski_durumu: ${baskiDurumu}`;
-          }
-          setActiveInitialPrompt(customPrompt);
-        }
-        setTab("assistant");
+      // Eğer /yonetim veya /admin ise doğrudan AdminPanel'i aç ve köke yönlendirme YAPMA:
+      if (path === '/yonetim' || path === '/admin') {
+        setTab('admin');
+        return;
       }
-    };
 
-    handleLocationChange();
-    window.addEventListener("popstate", handleLocationChange);
-    return () => window.removeEventListener("popstate", handleLocationChange);
+      // Sadece bozuk tekrarlı dizinler (/rehber/rehber gibi) varsa köke çek:
+      if (path !== '/' && path !== '/yonetim' && path !== '/admin') {
+        const savedTab = (localStorage.getItem('poset_active_tab') || sessionStorage.getItem('poset_active_tab') || 'home') as TabType;
+        const targetTab = HASH_TO_TAB[rawHash] || savedTab || 'home';
+        const hash = TAB_HASH_MAP[targetTab] || '';
+        const cleanUrl = hash ? `/#${hash}` : '/';
+        try {
+          window.history.replaceState(null, '', cleanUrl);
+        } catch (e) {
+          console.error("ReplaceState error:", e);
+        }
+      }
+
+      if (rawHash && HASH_TO_TAB[rawHash]) {
+        setTab(HASH_TO_TAB[rawHash] as TabType);
+      }
+
+      const handleLocationChange = () => {
+        const currentHash = window.location.hash.replace('#', '').trim().toLowerCase();
+        if (HASH_TO_TAB[currentHash]) {
+          const mappedTab = HASH_TO_TAB[currentHash] as TabType;
+          setTab(mappedTab);
+          localStorage.setItem('poset_active_tab', mappedTab);
+          sessionStorage.setItem('poset_active_tab', mappedTab);
+        }
+      };
+
+      window.addEventListener("hashchange", handleLocationChange);
+      window.addEventListener("popstate", handleLocationChange);
+      return () => {
+        window.removeEventListener("hashchange", handleLocationChange);
+        window.removeEventListener("popstate", handleLocationChange);
+      };
+    }
   }, []);
 
   // Home search bar triggers prompt
@@ -118,7 +186,7 @@ export default function App() {
 
   return (
     <AppProvider>
-      <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex flex-col justify-between selection:bg-indigo-600 selection:text-white" id="main-application-container">
+      <div className="min-h-screen bg-white text-slate-900 flex flex-col justify-between selection:bg-indigo-600 selection:text-white" id="main-application-container">
         {/* Universal header navigation (Hidden on Admin Panel) */}
         {currentTab !== "admin" && (
           <Header
@@ -127,7 +195,7 @@ export default function App() {
           />
         )}
 
-        {/* Main interactive tabs layout switcher with fade entrance */}
+        {/* Main interactive tabs layout switcher */}
         <main className="flex-grow">
           {currentTab === "home" && (
             <motion.div
@@ -157,6 +225,46 @@ export default function App() {
             </motion.div>
           )}
 
+          {currentTab === "guide" && (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+            >
+              <GuideTab setTab={handleSetTab} />
+            </motion.div>
+          )}
+
+          {currentTab === "about" && (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+            >
+              <AboutTab setTab={handleSetTab} />
+            </motion.div>
+          )}
+
+          {currentTab === "references" && (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+            >
+              <ReferencesTab setTab={handleSetTab} />
+            </motion.div>
+          )}
+
+          {currentTab === "contact" && (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+            >
+              <ContactTab setTab={handleSetTab} />
+            </motion.div>
+          )}
+
           {currentTab === "assistant" && (
             <motion.div
               initial={{ opacity: 0, y: 15 }}
@@ -172,17 +280,20 @@ export default function App() {
           )}
 
           {currentTab === "admin" && (
-            <div>
+            <div className="max-w-7xl mx-auto px-4 py-8">
               <AdminPanel
                 onBackToSite={() => {
-                  const subfolder = getSubfolderPrefix();
-                  window.history.pushState({}, "", `${subfolder}/` || "/");
-                  setTab("home");
+                  handleSetTab("home");
                 }}
               />
             </div>
           )}
         </main>
+
+        {/* Corporate B2B Footer (Hidden on Admin Panel) */}
+        {currentTab !== "admin" && (
+          <Footer setTab={handleSetTab} setActiveTab={handleSetTab} />
+        )}
 
         {/* Floating Action WhatsApp Support Badge - Positioned alt-sağ corner exactly as in the reference screenshot */}
         <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-center space-y-3" id="floating-support-container">

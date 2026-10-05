@@ -4,50 +4,97 @@ declare(strict_types=1);
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Cache-Control');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0');
+header('Pragma: no-cache');
+header('Expires: 0');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
-$dataDir = __DIR__ . '/../../data';
-if (!file_exists($dataDir)) {
-    @mkdir($dataDir, 0777, true);
+function resolveDataFile(string $filename): string {
+    $cleanName = basename($filename);
+    $docRoot = rtrim($_SERVER['DOCUMENT_ROOT'] ?? '', '/\\');
+    
+    // Priority order for live server:
+    // 1. Data directory in parent of api directory (standard: /public_html/data/)
+    // 2. Data directory in DOCUMENT_ROOT
+    // 3. Local api/data/ directory
+    // 4. Same directory as script
+    // 5. Fallback for repository local dev (/poset/data/)
+    $candidates = array_filter([
+        __DIR__ . '/../data/' . $cleanName,
+        (!empty($docRoot) ? $docRoot . '/data/' . $cleanName : null),
+        __DIR__ . '/data/' . $cleanName,
+        __DIR__ . '/' . $cleanName,
+        (!empty($docRoot) ? $docRoot . '/public/data/' . $cleanName : null),
+        (!empty($docRoot) ? $docRoot . '/api/data/' . $cleanName : null),
+        __DIR__ . '/../../data/' . $cleanName
+    ]);
+    foreach ($candidates as $c) {
+        if (file_exists($c) && filesize($c) > 2) {
+            return $c;
+        }
+    }
+    
+    // Target primary directory
+    $primaryDir = __DIR__ . '/../data';
+    if (!empty($docRoot) && is_dir($docRoot . '/data')) {
+        $primaryDir = $docRoot . '/data';
+    }
+    if (!file_exists($primaryDir)) {
+        @mkdir($primaryDir, 0777, true);
+    }
+    return $primaryDir . '/' . $cleanName;
 }
 
-$settingsFile = $dataDir . '/settings.json';
-$productsFile = $dataDir . '/products.json';
-$categoriesFile = $dataDir . '/categories.json';
-$templatesFile = $dataDir . '/multiplier_templates.json';
+$settingsFile = 'settings.json';
+$productsFile = 'products.json';
+$categoriesFile = 'categories.json';
+$templatesFile = 'multiplier_templates.json';
+$articlesFile = 'articles.json';
 
 /**
- * PHP 8.3 Safe JSON Reader with Shared OS Lock (LOCK_SH) and json_validate()
+ * PHP 8.3 Safe JSON Reader with Shared OS Lock (LOCK_SH), json_validate() and Seed Recovery
  */
-function getDbData(string $file, array $default = []): array {
-    if (!file_exists($file)) {
+function getDbData(string $filename, array $default = []): array {
+    $file = resolveDataFile($filename);
+    $cleanName = basename($filename);
+
+    if (!file_exists($file) || filesize($file) <= 2) {
+        $docRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
+        $seedCandidates = [
+            __DIR__ . '/../../data/' . $cleanName,
+            __DIR__ . '/../data/' . $cleanName,
+            __DIR__ . '/data/' . $cleanName,
+            $docRoot . '/data/' . $cleanName,
+            $docRoot . '/public/data/' . $cleanName,
+            $docRoot . '/api/data/' . $cleanName
+        ];
+        foreach ($seedCandidates as $sc) {
+            if (!empty($sc) && file_exists($sc) && filesize($sc) > 2) {
+                $raw = @file_get_contents($sc);
+                if (!empty($raw)) {
+                    $dec = @json_decode($raw, true);
+                    if (is_array($dec) && count($dec) > 0) {
+                        saveDbData($file, $dec);
+                        return $dec;
+                    }
+                }
+            }
+        }
         return $default;
     }
 
     $fp = @fopen($file, 'rb');
     if (!$fp) {
-        http_response_code(503);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Veritabanı dosyası okuma için açılamadı.',
-            'code' => 503
-        ], JSON_UNESCAPED_UNICODE);
-        exit;
+        return $default;
     }
 
     if (!flock($fp, LOCK_SH)) {
         fclose($fp);
-        http_response_code(503);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Veritabanı okuma kilidi alınamadı (LOCK_SH).',
-            'code' => 503
-        ], JSON_UNESCAPED_UNICODE);
-        exit;
+        return $default;
     }
 
     $size = filesize($file);
@@ -60,33 +107,54 @@ function getDbData(string $file, array $default = []): array {
         return $default;
     }
 
-    // PHP 8.3 json_validate() check
     $isValidJson = function_exists('json_validate') 
         ? json_validate((string)$content) 
         : (json_decode((string)$content) !== null);
 
     if (!$isValidJson) {
-        http_response_code(400);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Veritabanı JSON formatı geçersiz veya bozuk.',
-            'code' => 400
-        ], JSON_UNESCAPED_UNICODE);
-        exit;
+        return $default;
     }
 
     $decoded = json_decode((string)$content, true);
-    return is_array($decoded) ? $decoded : $default;
+    if (!is_array($decoded) || count($decoded) === 0) {
+        $docRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
+        $seedCandidates = [
+            __DIR__ . '/../../data/' . $cleanName,
+            __DIR__ . '/../data/' . $cleanName,
+            __DIR__ . '/data/' . $cleanName,
+            $docRoot . '/data/' . $cleanName,
+            $docRoot . '/public/data/' . $cleanName,
+            $docRoot . '/api/data/' . $cleanName
+        ];
+        foreach ($seedCandidates as $sc) {
+            if (!empty($sc) && file_exists($sc) && filesize($sc) > 2) {
+                $raw = @file_get_contents($sc);
+                if (!empty($raw)) {
+                    $dec = @json_decode($raw, true);
+                    if (is_array($dec) && count($dec) > 0) {
+                        saveDbData($file, $dec);
+                        return $dec;
+                    }
+                }
+            }
+        }
+        return $default;
+    }
+
+    return $decoded;
 }
+
 
 /**
  * PHP 8.3 Atomic JSON Writer with Exclusive OS Lock (LOCK_EX) and Backup Creation
  */
-function saveDbData(string $file, array $data): bool {
+function saveDbData(string $filename, array $data): bool {
+    $file = resolveDataFile($filename);
     $dir = dirname($file);
     if (!file_exists($dir)) {
         @mkdir($dir, 0777, true);
     }
+
 
     // Backup creation
     $backupDir = $dir . '/backups';
@@ -128,6 +196,20 @@ function saveDbData(string $file, array $data): bool {
 
     flock($fp, LOCK_UN);
     fclose($fp);
+
+    // Also mirror to other existing data locations so reads from any candidate are always identical!
+    $cleanName = basename($filename);
+    $docRoot = rtrim($_SERVER['DOCUMENT_ROOT'] ?? '', '/\\');
+    $mirrorTargets = array_filter([
+        __DIR__ . '/../data/' . $cleanName,
+        (!empty($docRoot) ? $docRoot . '/data/' . $cleanName : null),
+        __DIR__ . '/../../data/' . $cleanName
+    ]);
+    foreach ($mirrorTargets as $mt) {
+        if ($mt !== $file && file_exists(dirname($mt))) {
+            @file_put_contents($mt, $jsonString, LOCK_EX);
+        }
+    }
 
     return true;
 }
@@ -211,10 +293,39 @@ $defaultSettings = [
     'last_updated' => date('d.m.Y H:i:s')
 ];
 
-$method = $_SERVER['REQUEST_METHOD'];
-$action = isset($_GET['action']) ? (string)$_GET['action'] : '';
+$method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 $rawInput = file_get_contents('php://input');
 $input = !empty($rawInput) ? json_decode((string)$rawInput, true) : [];
+if (!is_array($input)) $input = [];
+
+// Support HTTP Method Override for shared hosting (PUT/DELETE over POST)
+if ($method === 'POST') {
+    if (isset($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'])) {
+        $method = strtoupper((string)$_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE']);
+    } elseif (isset($input['_method'])) {
+        $method = strtoupper((string)$input['_method']);
+    } elseif (isset($_GET['_method'])) {
+        $method = strtoupper((string)$_GET['_method']);
+    }
+}
+
+$action = isset($_GET['action']) ? (string)$_GET['action'] : (isset($_GET['route']) ? (string)$_GET['route'] : '');
+if (empty($action)) {
+    $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
+    if (str_contains($requestUri, '/refresh-rate')) {
+        $action = 'refresh-rate';
+    } elseif (str_contains($requestUri, '/settings')) {
+        $action = 'settings';
+    } elseif (str_contains($requestUri, '/products')) {
+        $action = 'products';
+    } elseif (str_contains($requestUri, '/categories')) {
+        $action = 'categories';
+    } elseif (str_contains($requestUri, '/articles')) {
+        $action = 'articles';
+    } elseif (str_contains($requestUri, '/multiplier-templates')) {
+        $action = 'multiplier-templates';
+    }
+}
 
 if ($action === 'refresh-rate') {
     $providedKey = isset($input['collect_api_key']) ? (string)$input['collect_api_key'] : '';
@@ -270,56 +381,100 @@ if ($action === 'settings') {
 }
 
 if ($action === 'products') {
-    if ($method === 'POST') {
+    if ($method === 'POST' || $method === 'PUT') {
         $products = getDbData($productsFile, []);
-        $newProd = is_array($input) ? $input : [];
-        $maxSira = 0;
-        foreach ($products as $p) {
-            $s = intval($p['sira_no'] ?? 0);
-            if ($s > $maxSira) $maxSira = $s;
-        }
-        $newProd['sira_no'] = $maxSira + 1;
-        $rawPrice = $newProd['birim_fiyat'] ?? ($newProd['birim_fiyati'] ?? 0);
-        $cleanPrice = is_numeric($rawPrice) ? floatval($rawPrice) : floatval(str_replace(',', '.', (string)$rawPrice));
-        $finalPrice = is_nan($cleanPrice) ? 0.0 : $cleanPrice;
-        $newProd['birim_fiyat'] = $finalPrice;
-        $newProd['birim_fiyati'] = $finalPrice;
-        $newProd['fiyat_aliniz'] = $finalPrice > 0 ? false : (isset($newProd['fiyat_aliniz']) ? (bool)$newProd['fiyat_aliniz'] : true);
-        $products[] = $newProd;
-        saveDbData($productsFile, $products);
-        echo json_encode(['success' => true, 'product' => $newProd, 'products' => $products], JSON_UNESCAPED_UNICODE);
-        exit;
-    } elseif ($method === 'PUT') {
-        $products = getDbData($productsFile, []);
-        $targetSku = trim((string)($input['urun_kodu'] ?? ($input['sku'] ?? ($input['id'] ?? ''))));
-        $foundIndex = -1;
-        foreach ($products as $idx => $p) {
-            $pCode = (string)($p['urun_kodu'] ?? ($p['sku'] ?? ($p['id'] ?? '')));
-            if (strcasecmp(trim($pCode), $targetSku) === 0) {
-                $foundIndex = $idx;
-                break;
+        $targetSku = trim((string)($input['urun_kodu'] ?? ($input['sku'] ?? ($input['id'] ?? ($_GET['sku'] ?? '')))));
+        if (empty($targetSku)) {
+            $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
+            if (preg_match('#/products/([^/?]+)#', $requestUri, $matches)) {
+                $targetSku = urldecode($matches[1]);
             }
         }
-        if ($foundIndex === -1) {
-            http_response_code(404);
-            echo json_encode(['success' => false, 'error' => 'HATA: Ürün bulunamadı -> ' . $targetSku], JSON_UNESCAPED_UNICODE);
-            exit;
+        $targetSku = trim($targetSku);
+
+        // Search for existing product by SKU/urun_kodu/id
+        $foundIndex = -1;
+        if (!empty($targetSku)) {
+            foreach ($products as $idx => $p) {
+                $pCode = (string)($p['urun_kodu'] ?? ($p['sku'] ?? ($p['id'] ?? '')));
+                if (strcasecmp(trim($pCode), $targetSku) === 0) {
+                    $foundIndex = $idx;
+                    break;
+                }
+            }
         }
-        $updatedProd = array_merge($products[$foundIndex], is_array($input) ? $input : []);
-        $rawPrice = $updatedProd['birim_fiyat'] ?? ($updatedProd['birim_fiyati'] ?? 0);
+
+        $rawPrice = $input['birim_fiyat'] ?? ($input['birim_fiyati'] ?? ($input['base_price'] ?? 0));
         $cleanPrice = is_numeric($rawPrice) ? floatval($rawPrice) : floatval(str_replace(',', '.', (string)$rawPrice));
         $finalPrice = is_nan($cleanPrice) ? 0.0 : $cleanPrice;
-        $updatedProd['birim_fiyat'] = $finalPrice;
-        $updatedProd['birim_fiyati'] = $finalPrice;
-        $updatedProd['fiyat_aliniz'] = $finalPrice > 0 ? false : (isset($input['fiyat_aliniz']) ? (bool)$input['fiyat_aliniz'] : true);
 
-        $products[$foundIndex] = $updatedProd;
-        saveDbData($productsFile, $products);
-        echo json_encode(['success' => true, 'product' => $updatedProd, 'products' => $products], JSON_UNESCAPED_UNICODE);
-        exit;
+        if ($foundIndex !== -1) {
+            // Update existing in-place: NEVER duplicate!
+            $updatedProd = array_merge($products[$foundIndex], is_array($input) ? $input : []);
+            $updatedProd['birim_fiyat'] = $finalPrice;
+            $updatedProd['birim_fiyati'] = $finalPrice;
+            $updatedProd['base_price'] = $finalPrice;
+            $updatedProd['fiyat_aliniz'] = $finalPrice > 0 ? false : (isset($input['fiyat_aliniz']) ? (bool)$input['fiyat_aliniz'] : true);
+            $updatedProd['is_quote_only'] = $updatedProd['fiyat_aliniz'];
+            $products[$foundIndex] = $updatedProd;
+            saveDbData($productsFile, $products);
+            echo json_encode(['success' => true, 'product' => $updatedProd, 'products' => $products], JSON_UNESCAPED_UNICODE);
+            exit;
+        } else {
+            // Insert new product
+            $newProd = is_array($input) ? $input : [];
+            $maxSira = 0;
+            foreach ($products as $p) {
+                $s = intval($p['sira_no'] ?? 0);
+                if ($s > $maxSira) $maxSira = $s;
+            }
+            $newProd['sira_no'] = $maxSira + 1;
+            if (empty($newProd['urun_kodu'])) {
+                $newProd['urun_kodu'] = !empty($targetSku) ? $targetSku : 'PRD-' . substr((string)time(), -5);
+            }
+            $newProd['birim_fiyat'] = $finalPrice;
+            $newProd['birim_fiyati'] = $finalPrice;
+            $newProd['base_price'] = $finalPrice;
+            $newProd['fiyat_aliniz'] = $finalPrice > 0 ? false : (isset($newProd['fiyat_aliniz']) ? (bool)$newProd['fiyat_aliniz'] : true);
+            $newProd['is_quote_only'] = $newProd['fiyat_aliniz'];
+            $products[] = $newProd;
+            saveDbData($productsFile, $products);
+            echo json_encode(['success' => true, 'product' => $newProd, 'products' => $products], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    } elseif ($method === 'DELETE') {
+        $products = getDbData($productsFile, []);
+        $targetSku = trim((string)($_GET['sku'] ?? ($input['urun_kodu'] ?? ($input['sku'] ?? ($input['id'] ?? '')))));
+        if (empty($targetSku)) {
+            $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
+            if (preg_match('#/products/([^/?]+)#', $requestUri, $matches)) {
+                $targetSku = urldecode($matches[1]);
+            }
+        }
+        $targetSku = trim($targetSku);
+
+        $newProducts = [];
+        $deleted = false;
+        foreach ($products as $p) {
+            $pCode = (string)($p['urun_kodu'] ?? ($p['sku'] ?? ($p['id'] ?? '')));
+            if (!empty($targetSku) && strcasecmp(trim($pCode), $targetSku) === 0) {
+                $deleted = true;
+                continue;
+            }
+            $newProducts[] = $p;
+        }
+
+        if ($deleted) {
+            saveDbData($productsFile, $newProducts);
+            echo json_encode(['success' => true, 'deleted_sku' => $targetSku, 'products' => $newProducts], JSON_UNESCAPED_UNICODE);
+            exit;
+        } else {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Ürün bulunamadı: ' . $targetSku], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
     } else {
         $products = getDbData($productsFile, []);
-        header('Cache-Control: no-store, no-cache, must-revalidate, private');
         echo json_encode($products, JSON_UNESCAPED_UNICODE);
         exit;
     }
@@ -526,5 +681,63 @@ if ($action === 'multiplier-templates') {
     exit;
 }
 
+if ($action === 'articles') {
+    if ($method === 'POST') {
+        $articles = getDbData($articlesFile, []);
+        $newArt = is_array($input) ? $input : [];
+        if (empty($newArt['id'])) {
+            $newArt['id'] = 'art-' . time();
+        }
+        if (empty($newArt['tarih'])) {
+            $newArt['tarih'] = date('Y-m-d');
+        }
+        array_unshift($articles, $newArt);
+        saveDbData($articlesFile, $articles);
+        echo json_encode(['success' => true, 'article' => $newArt, 'articles' => $articles], JSON_UNESCAPED_UNICODE);
+        exit;
+    } elseif ($method === 'PUT') {
+        $articles = getDbData($articlesFile, []);
+        $targetId = trim((string)($_GET['id'] ?? ($input['id'] ?? ($input['slug'] ?? ''))));
+        $foundIdx = -1;
+        foreach ($articles as $idx => $a) {
+            $aId = (string)($a['id'] ?? ($a['slug'] ?? ''));
+            if (strcasecmp(trim($aId), $targetId) === 0) {
+                $foundIdx = $idx;
+                break;
+            }
+        }
+        if ($foundIdx === -1) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'HATA: Makale bulunamadı -> ' . $targetId], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $updatedArt = array_merge($articles[$foundIdx], is_array($input) ? $input : []);
+        $articles[$foundIdx] = $updatedArt;
+        saveDbData($articlesFile, $articles);
+        echo json_encode(['success' => true, 'article' => $updatedArt, 'articles' => $articles], JSON_UNESCAPED_UNICODE);
+        exit;
+    } elseif ($method === 'DELETE') {
+        $articles = getDbData($articlesFile, []);
+        $targetId = trim((string)($_GET['id'] ?? ($input['id'] ?? ($input['slug'] ?? ''))));
+        $filtered = [];
+        foreach ($articles as $a) {
+            $aId = (string)($a['id'] ?? ($a['slug'] ?? ''));
+            if (strcasecmp(trim($aId), $targetId) !== 0) {
+                $filtered[] = $a;
+            }
+        }
+        $articles = array_values($filtered);
+        saveDbData($articlesFile, $articles);
+        echo json_encode(['success' => true, 'articles' => $articles], JSON_UNESCAPED_UNICODE);
+        exit;
+    } else {
+        $articles = getDbData($articlesFile, []);
+        header('Cache-Control: no-store, no-cache, must-revalidate, private');
+        echo json_encode($articles, JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
 http_response_code(400);
 echo json_encode(['success' => false, 'error' => 'Geçersiz işlem.'], JSON_UNESCAPED_UNICODE);
+

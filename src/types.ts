@@ -39,6 +39,7 @@ export interface QuoteSpec {
   name?: string;
   stokDurumu?: "Var" | "Siparişle" | "Yok";
   stok_durumu?: "Var" | "Siparişle" | "Yok";
+  customerNote?: string;
 }
 
 export interface QuoteItem {
@@ -55,6 +56,8 @@ export interface QuoteItem {
   toplam_fiyat: number;
   logo_dosya_adi: string | null;
   fatura_cebi_dahil?: boolean;
+  musteri_notu?: string;
+  stok_durumu?: string;
 }
 
 export interface ChatMessage {
@@ -129,8 +132,14 @@ export interface DbProduct {
   stok_durumu: "Var" | "Siparişle" | "Yok";
   birim_fiyat: number;
   birim_fiyati?: number;
+  base_price?: number;
   fiyat_aliniz: boolean;
+  is_quote_only?: boolean;
   para_birimi?: "TL" | "USD";
+  unit?: "Adet" | "Kg" | string;
+  allow_custom_dimensions?: boolean;
+  allow_custom_size?: boolean;
+  custom_size?: { en: string; boy: string; koruk?: string };
 }
 
 export interface PriceTierOption {
@@ -213,4 +222,39 @@ export function parsePriceMultipliers(carpanStr?: string, unitStr: string = "Ade
 
   return tiers;
 }
+
+export interface ArticleSssItem {
+  soru: string;
+  cevap: string;
+}
+
+export interface ArticleSeo {
+  meta_title?: string;
+  meta_description?: string;
+  keywords?: string[];
+  geo_region?: "Tüm Türkiye" | "İstanbul İçi Hızlı Teslimat" | "Yurt Dışı / İhracat" | string;
+}
+
+export interface ArticleGeoAi {
+  quick_answer?: string;
+  key_takeaways?: string[];
+}
+
+export interface Article {
+  id: string;
+  slug: string;
+  kategori: string;
+  baslik: string;
+  alt_baslik: string;
+  ozet: string;
+  icerik: string;
+  okuma_suresi: string;
+  tarih: string;
+  related_product?: string;
+  gorsel_url?: string;
+  sss?: ArticleSssItem[];
+  seo?: ArticleSeo;
+  geo_ai?: ArticleGeoAi;
+}
+
 

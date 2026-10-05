@@ -1,0 +1,26 @@
+[
+  {
+    "id": "tpl-1",
+    "title": "Kargo Poşetleri Standart",
+    "multiplierString": "5k:1.00 / 10k:0.92 / 25k:0.85",
+    "description": "5k (Standart) - 10k (%8 İndirim) - 25k (%15 İndirim)"
+  },
+  {
+    "id": "tpl-2",
+    "title": "Mağaza Poşeti Kademe",
+    "multiplierString": "1k:1.00 / 5k:0.90 / 10k:0.82 / 25k:0.75",
+    "description": "1k (%0) - 5k (%10) - 10k (%18) - 25k (%25)"
+  },
+  {
+    "id": "tpl-3",
+    "title": "Karton Çanta / Özel",
+    "multiplierString": "500:1.00 / 1k:0.88 / 3k:0.80",
+    "description": "500 Adet (%0) - 1.000 (%12) - 3.000 (%20)"
+  },
+  {
+    "id": "tpl-4",
+    "title": "Atlet / Yüksek Hacim",
+    "multiplierString": "10k:1.00 / 25k:0.92 / 50k:0.85",
+    "description": "10k (%0) - 25k (%8) - 50k (%15)"
+  }
+]

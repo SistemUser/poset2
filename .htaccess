@@ -2,23 +2,14 @@
   RewriteEngine On
   RewriteBase /
 
-  # Handle CORS and cache control headers
-  <IfModule mod_headers.c>
-    Header set Access-Control-Allow-Origin "*"
-    Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-    Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Cache-Control"
-
-    # Disable caching for all API endpoints and JSON data files
-    <FilesMatch "\.(php|json)$">
-      Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0"
-      Header set Pragma "no-cache"
-      Header set Expires "0"
-    </FilesMatch>
-  </IfModule>
+  # Handle CORS headers if needed
+  Header set Access-Control-Allow-Origin "*"
+  Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+  Header set Access-Control-Allow-Headers "Content-Type, Authorization"
 
   # Route /api/admin/* endpoints to api/admin.php
   RewriteRule ^api/admin/articles(/.*)?$ api/admin.php?action=articles [QSA,L]
-  RewriteRule ^api/admin/products(?:/(.+))?$ api/admin.php?action=products&sku=$1 [QSA,L]
+  RewriteRule ^api/admin/products(/.*)?$ api/admin.php?action=products [QSA,L]
   RewriteRule ^api/admin/categories(/.*)?$ api/admin.php?action=categories [QSA,L]
   RewriteRule ^api/admin/settings(/.*)?$ api/admin.php?action=settings [QSA,L]
   RewriteRule ^api/admin/refresh-rate(/.*)?$ api/admin.php?action=refresh-rate [QSA,L]

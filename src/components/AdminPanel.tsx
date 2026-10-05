@@ -4,9 +4,10 @@ import {
   DollarSign, RefreshCw, Plus, Edit, Trash2, Search, Filter, 
   Save, Check, AlertCircle, ArrowLeft, Key, Clock, Package, 
   ShieldCheck, Tag, ChevronLeft, ChevronRight, X, Lock, User, 
-  Eye, EyeOff, LogOut, ChevronDown, ChevronUp, Layers
+  Eye, EyeOff, LogOut, ChevronDown, ChevronUp, Layers, BookOpen,
+  Globe, Bot, Sparkles, CheckCircle2, Menu
 } from "lucide-react";
-import { AppSettings, DbProduct, CategorySchema } from "../types";
+import { AppSettings, DbProduct, CategorySchema, Article } from "../types";
 import { useAppConfig } from "../AppContext";
 import { getApiEndpoint } from "../utils/urlHelper";
 
@@ -142,6 +143,10 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
     refreshCategories: syncGlobalCategories
   } = useAppConfig();
 
+  const setGlobalSettings = setSettings;
+  const setGlobalProducts = setProducts;
+  const setGlobalCategories = setCategories;
+
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return localStorage.getItem("poset_admin_auth") === "true";
@@ -175,9 +180,42 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
   const [templateDesc, setTemplateDesc] = useState("");
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
+  // Article Management (Ambalaj Rehberi) State
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [editingArticle, setEditingArticle] = useState<Article | null>(null);
+  const [articleFormData, setArticleFormData] = useState<Partial<Article>>({});
+  const [isArticleModalOpen, setIsArticleModalOpen] = useState(false);
+  const [isSavingArticle, setIsSavingArticle] = useState(false);
+  const [isArticlesCollapsed, setIsArticlesCollapsed] = useState(false);
+  const [articleSearchQuery, setArticleSearchQuery] = useState("");
+  // Admin Sub-Tab Navigation State
+  const [activeAdminSubTab, setActiveAdminSubTab] = useState<"products" | "currency" | "categories" | "multipliers" | "articles" | "security">(() => {
+    const saved = localStorage.getItem("poset_admin_subtab");
+    if (saved && ["currency", "products", "categories", "multipliers", "articles", "security"].includes(saved)) {
+      return saved as any;
+    }
+    return "currency";
+  });
+
+  const handleSubTabChange = (tab: "products" | "currency" | "categories" | "multipliers" | "articles" | "security") => {
+    setActiveAdminSubTab(tab);
+    localStorage.setItem("poset_admin_subtab", tab);
+  };
+
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Security & Credentials State
+  const [securityUsername, setSecurityUsername] = useState<string>(() => localStorage.getItem("poset_admin_username") || "poset");
+  const [securityCurrentPassword, setSecurityCurrentPassword] = useState("");
+  const [securityNewPassword, setSecurityNewPassword] = useState("");
+  const [securityNewPasswordConfirm, setSecurityNewPasswordConfirm] = useState("");
+  const [showSecurityPasswords, setShowSecurityPasswords] = useState(false);
+  const [isSavingSecurity, setIsSavingSecurity] = useState(false);
+
   // Table filters & Pagination state
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
 
@@ -229,15 +267,214 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Fetch Settings, Products, Categories and Multiplier Templates on mount
+  // Fetch Settings, Products, Categories, Multiplier Templates and Articles on mount
   useEffect(() => {
     if (isAuthenticated) {
       fetchSettings();
       fetchProducts();
       fetchCategories();
       fetchMultiplierTemplates();
+      fetchArticles();
     }
   }, [isAuthenticated]);
+
+  const fetchArticles = async () => {
+    const candidateUrls = [
+      getApiEndpoint("api/articles"),
+      getApiEndpoint("api/admin/articles"),
+      getApiEndpoint("api/api.php?action=articles"),
+      getApiEndpoint("api/admin.php?action=articles"),
+      "/data/articles.json",
+      "/api/data/articles.json"
+    ];
+
+    for (const url of candidateUrls) {
+      try {
+        const res = await fetch(`${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`, { cache: "no-store" });
+        if (res.ok) {
+          const contentType = res.headers.get("content-type") || "";
+          if (contentType.includes("application/json") || url.endsWith(".json")) {
+            const data = await res.json();
+            const list = Array.isArray(data) ? data : (data.articles || data.data || []);
+            if (Array.isArray(list) && list.length > 0) {
+              setArticles(list);
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`Admin articles fetch failed (${url}):`, err);
+      }
+    }
+  };
+
+
+
+  const handleOpenAddArticleModal = () => {
+    setEditingArticle(null);
+    setArticleFormData({
+      baslik: "",
+      alt_baslik: "",
+      kategori: "E-TİCARET VE KARGO AMBALAJLARI",
+      ozet: "",
+      icerik: "",
+      related_product: "",
+      gorsel_url: "",
+      sss: [],
+      okuma_suresi: "",
+      tarih: new Date().toISOString().split('T')[0],
+      seo: {
+        meta_title: "",
+        meta_description: "",
+        keywords: [],
+        geo_region: "Tüm Türkiye"
+      },
+      geo_ai: {
+        quick_answer: "",
+        key_takeaways: [""]
+      }
+    });
+    setIsArticleModalOpen(true);
+  };
+
+  const handleOpenEditArticleModal = (art: Article) => {
+    setEditingArticle(art);
+    setArticleFormData({
+      ...art,
+      sss: Array.isArray(art.sss) ? [...art.sss] : [],
+      seo: {
+        meta_title: art.seo?.meta_title || "",
+        meta_description: art.seo?.meta_description || "",
+        keywords: Array.isArray(art.seo?.keywords) ? [...art.seo.keywords] : [],
+        geo_region: art.seo?.geo_region || "Tüm Türkiye"
+      },
+      geo_ai: {
+        quick_answer: art.geo_ai?.quick_answer || "",
+        key_takeaways: Array.isArray(art.geo_ai?.key_takeaways) ? [...art.geo_ai.key_takeaways] : []
+      }
+    });
+    setIsArticleModalOpen(true);
+  };
+
+  const handleAddSssItem = () => {
+    setArticleFormData(prev => ({
+      ...prev,
+      sss: [...(prev.sss || []), { soru: "", cevap: "" }]
+    }));
+  };
+
+  const handleRemoveSssItem = (index: number) => {
+    setArticleFormData(prev => ({
+      ...prev,
+      sss: (prev.sss || []).filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleSssChange = (index: number, field: "soru" | "cevap", val: string) => {
+    setArticleFormData(prev => {
+      const nextSss = [...(prev.sss || [])];
+      nextSss[index] = { ...nextSss[index], [field]: val };
+      return { ...prev, sss: nextSss };
+    });
+  };
+
+  const handleAddKeyTakeaway = () => {
+    const current = articleFormData.geo_ai?.key_takeaways || [];
+    if (current.length >= 4) return;
+    setArticleFormData(prev => ({
+      ...prev,
+      geo_ai: {
+        ...prev.geo_ai,
+        key_takeaways: [...current, ""]
+      }
+    }));
+  };
+
+  const handleRemoveKeyTakeaway = (index: number) => {
+    const current = (articleFormData.geo_ai?.key_takeaways || []).filter((_, i) => i !== index);
+    setArticleFormData(prev => ({
+      ...prev,
+      geo_ai: {
+        ...prev.geo_ai,
+        key_takeaways: current
+      }
+    }));
+  };
+
+  const handleKeyTakeawayChange = (index: number, val: string) => {
+    const current = [...(articleFormData.geo_ai?.key_takeaways || [])];
+    current[index] = val;
+    setArticleFormData(prev => ({
+      ...prev,
+      geo_ai: {
+        ...prev.geo_ai,
+        key_takeaways: current
+      }
+    }));
+  };
+
+  const handleSaveArticleModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!articleFormData.baslik || !articleFormData.baslik.trim()) {
+      triggerToast("❌ Lütfen makale başlığını girin.");
+      return;
+    }
+
+    setIsSavingArticle(true);
+    const isEdit = !!editingArticle;
+
+    try {
+      const url = isEdit 
+        ? getApiEndpoint(`api/admin/articles/${encodeURIComponent(editingArticle.id)}`)
+        : getApiEndpoint("api/admin/articles");
+      const method = isEdit ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(articleFormData)
+      });
+
+      const data = await res.json();
+      if (res.ok && (data.success || Array.isArray(data.articles))) {
+        if (data.articles) {
+          setArticles(data.articles);
+        } else {
+          await fetchArticles();
+        }
+        setIsArticleModalOpen(false);
+        triggerToast(isEdit ? "✓ Makale başarıyla güncellendi." : "✓ Yeni makale başarıyla eklendi.");
+      } else {
+        triggerToast("❌ Makale kaydedilemedi: " + (data.error || "Bilinmeyen hata"));
+      }
+    } catch (err: any) {
+      console.error("Article save error:", err);
+      triggerToast("❌ Hata: " + (err.message || "Sunucu hatası"));
+    } finally {
+      setIsSavingArticle(false);
+    }
+  };
+
+  const handleDeleteArticle = async (id: string, title: string) => {
+    if (!window.confirm(`"${title}" makalesini silmek istediğinizden emin misiniz?`)) return;
+
+    try {
+      const res = await fetch(getApiEndpoint(`api/admin/articles/${encodeURIComponent(id)}`), {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.articles) {
+          setArticles(data.articles);
+        } else {
+          setArticles(prev => prev.filter(a => a.id !== id));
+        }
+        triggerToast(`✓ "${title}" makalesi silindi.`);
+      }
+    } catch (err) {
+      triggerToast("❌ Makale silinirken hata oluştu.");
+    }
+  };
 
   const fetchCategories = async () => {
     try {
@@ -245,7 +482,7 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          setGlobalCategories(data);
+          setCategories(data);
         }
       }
     } catch (err) {
@@ -274,7 +511,10 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (usernameInput.trim() === "poset" && passwordInput.trim() === "654321") {
+    const storedUser = localStorage.getItem("poset_admin_username") || "poset";
+    const storedPass = localStorage.getItem("poset_admin_password") || "654321";
+
+    if (usernameInput.trim() === storedUser && passwordInput.trim() === storedPass) {
       setIsAuthenticated(true);
       localStorage.setItem("poset_admin_auth", "true");
       setLoginError(null);
@@ -287,6 +527,43 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
     }
   };
 
+  const handleSaveSecuritySettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingSecurity(true);
+
+    const storedPass = localStorage.getItem("poset_admin_password") || "654321";
+
+    if (securityCurrentPassword.trim() !== storedPass) {
+      triggerToast("❌ Mevcut şifrenizi hatalı girdiniz.");
+      setIsSavingSecurity(false);
+      return;
+    }
+
+    if (securityNewPassword || securityNewPasswordConfirm) {
+      if (securityNewPassword !== securityNewPasswordConfirm) {
+        triggerToast("❌ Yeni şifreler birbiriyle eşleşmiyor.");
+        setIsSavingSecurity(false);
+        return;
+      }
+      if (securityNewPassword.trim().length < 4) {
+        triggerToast("❌ Yeni şifre en az 4 karakter olmalıdır.");
+        setIsSavingSecurity(false);
+        return;
+      }
+      localStorage.setItem("poset_admin_password", securityNewPassword.trim());
+    }
+
+    if (securityUsername.trim()) {
+      localStorage.setItem("poset_admin_username", securityUsername.trim());
+    }
+
+    setSecurityCurrentPassword("");
+    setSecurityNewPassword("");
+    setSecurityNewPasswordConfirm("");
+    setIsSavingSecurity(false);
+    triggerToast("✓ Yönetici giriş bilgileri başarıyla güncellendi.");
+  };
+
   const handleLogout = () => {
     setIsAuthenticated(false);
     localStorage.removeItem("poset_admin_auth");
@@ -294,6 +571,7 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
     setPasswordInput("");
     triggerToast("Çıkış yapıldı.");
   };
+
 
   const fetchSettings = async () => {
     try {
@@ -325,7 +603,7 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
               ...p,
               birim_fiyat: price,
               birim_fiyati: price,
-              fiyat_aliniz: price <= 0,
+              fiyat_aliniz: p.fiyat_aliniz === true || price <= 0,
               isPremiumPrice: false
             };
           });
@@ -380,6 +658,9 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
 
     // Update local React state & localStorage immediately
     setSettings(newSettings);
+    setGlobalSettings(newSettings);
+    try { localStorage.setItem("poset_app_settings", JSON.stringify(newSettings)); } catch (e) {}
+    window.dispatchEvent(new CustomEvent('poset:sync'));
     if (onSettingsUpdated) onSettingsUpdated(newSettings);
 
     try {
@@ -393,6 +674,8 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
         const result = await res.json();
         if (result && result.settings) {
           setSettings(result.settings);
+          setGlobalSettings(result.settings);
+          try { localStorage.setItem("poset_app_settings", JSON.stringify(result.settings)); } catch (e) {}
         }
       }
     } catch (err) {
@@ -400,6 +683,7 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
     } finally {
       setIsSavingSettings(false);
       triggerToast(`✓ Dolar kuru ₺${rateVal.toFixed(2)} olarak kaydedildi.`);
+      if (syncGlobalSettings) syncGlobalSettings().catch(() => {});
     }
   };
 
@@ -589,7 +873,12 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
       urun_kategorisi: selectedCat,
       birim_fiyat: numPrice,
       birim_fiyati: numPrice,
-      fiyat_aliniz: numPrice <= 0,
+      base_price: numPrice,
+      is_quote_only: numPrice <= 0 || formData.fiyat_aliniz === true,
+      fiyat_aliniz: numPrice <= 0 || formData.fiyat_aliniz === true,
+      unit: catRule.isSatisSekliLocked ? "Adet" : (formData.satis_sekli || catRule.defaultSatisSekli || "Adet"),
+      allow_custom_dimensions: formData.allow_custom_dimensions !== false,
+      allow_custom_size: formData.allow_custom_dimensions !== false,
       isPremiumPrice: false,
       // Enforce strict schema persistence fallbacks
       kargo_bant_tipi: catRule.showKargoBant ? (formData.kargo_bant_tipi || "Yok") : "Yok",
@@ -602,8 +891,9 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
       moq: (formData.moq || "").replace(/[^0-9.]/g, "").trim() || "5.000"
     } as DbProduct;
 
-    if (numPrice > 0) {
+    if (numPrice > 0 && !formData.fiyat_aliniz) {
       finalProd.fiyat_aliniz = false;
+      finalProd.is_quote_only = false;
       finalProd.isPremiumPrice = false;
     }
 
@@ -613,11 +903,20 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
         : getApiEndpoint("api/admin/products");
       const method = isEdit ? "PUT" : "POST";
 
-      const res = await fetch(url, {
+      let res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(finalProd)
       });
+
+      // Shared hosting fallback: if PUT is blocked (405, 403, etc.), try POST with _method: PUT
+      if (!res.ok && isEdit && method === "PUT") {
+        res = await fetch(getApiEndpoint("api/admin/products"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...finalProd, _method: "PUT" })
+        });
+      }
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -632,6 +931,20 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
       } else {
         setProducts(prev => [updated, ...prev]);
       }
+
+      // Immediately update AppContext global products & localStorage
+      setGlobalProducts(prev => {
+        const cleanCode = (updated.urun_kodu || "").trim().toLowerCase();
+        const exists = prev.some(p => (p.urun_kodu || "").trim().toLowerCase() === cleanCode);
+        const next = exists 
+          ? prev.map(p => (p.urun_kodu || "").trim().toLowerCase() === cleanCode ? updated : p) 
+          : [updated, ...prev];
+        try { localStorage.setItem("poset_app_products", JSON.stringify(next)); } catch (e) {}
+        return next;
+      });
+
+      window.dispatchEvent(new CustomEvent('poset:sync'));
+      await syncGlobalProducts().catch(() => {});
 
       setModalOpen(false);
       triggerToast(isEdit ? "✓ Ürün ve fiyat başarıyla diske kaydedildi." : "✓ Yeni ürün eklendi ve diske kaydedildi.");
@@ -652,18 +965,34 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
 
     // 1. Immediately update React state & localStorage
     setProducts(prev => prev.filter(p => p.urun_kodu !== targetCode));
+    setGlobalProducts(prev => {
+      const cleanCode = (targetCode || "").trim().toLowerCase();
+      const next = prev.filter(p => (p.urun_kodu || "").trim().toLowerCase() !== cleanCode);
+      try { localStorage.setItem("poset_app_products", JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+    window.dispatchEvent(new CustomEvent('poset:sync'));
     setDeleteConfirmProduct(null);
     triggerToast("✓ Ürün başarıyla silindi.");
 
-    // 2. Sync deletion to server
+    // 2. Sync deletion to server with HTTP fallback
     try {
-      await fetch(getApiEndpoint(`api/admin/products/${encodeURIComponent(targetCode)}`), {
+      const delRes = await fetch(getApiEndpoint(`api/admin/products/${encodeURIComponent(targetCode)}`), {
         method: "DELETE"
       });
+      if (!delRes.ok) {
+        // Fallback to POST with _method: DELETE for restrictive hosts
+        await fetch(getApiEndpoint("api/admin/products"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ urun_kodu: targetCode, _method: "DELETE" })
+        }).catch(() => {});
+      }
     } catch (err) {
       console.warn("Background delete product warning:", err);
     } finally {
       setIsDeletingProduct(false);
+      await syncGlobalProducts().catch(() => {});
     }
   };
 
@@ -936,15 +1265,12 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
   const categoriesList = useMemo(() => {
     const set = new Set<string>();
     if (Array.isArray(categories)) {
-      categories.forEach((c: any) => {
-        const name = typeof c === "string" ? c : c?.name;
-        if (name && typeof name === "string" && name.trim()) {
-          set.add(name.trim());
-        }
+      categories.forEach(c => {
+        if (c && typeof c === "string" && c.trim()) set.add(c.trim());
       });
     }
     if (Array.isArray(products)) {
-      products.forEach((p: any) => {
+      products.forEach(p => {
         if (p.urun_kategorisi && typeof p.urun_kategorisi === "string" && p.urun_kategorisi.trim()) {
           set.add(p.urun_kategorisi.trim());
         }
@@ -1074,19 +1400,6 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
 
           </form>
 
-          {/* Back to main site */}
-          {onBackToSite && (
-            <div className="pt-2 border-t border-slate-100 text-center">
-              <button
-                onClick={onBackToSite}
-                className="text-xs text-slate-500 hover:text-indigo-600 font-semibold inline-flex items-center space-x-1.5 cursor-pointer transition-colors"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Ana Sitedeki Kataloğa Dön</span>
-              </button>
-            </div>
-          )}
-
         </motion.div>
       </div>
     );
@@ -1099,16 +1412,6 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
       <header className="bg-white/90 border-b border-slate-200 sticky top-0 z-40 backdrop-blur-md px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            {onBackToSite && (
-              <button
-                onClick={onBackToSite}
-                className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl transition-all flex items-center space-x-1 text-xs font-bold mr-2 cursor-pointer"
-                title="Ana Siteye Dön"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Siteye Dön</span>
-              </button>
-            )}
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-600/20">
               <ShieldCheck className="w-5 h-5 text-white" />
             </div>
@@ -1141,9 +1444,186 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
         
+        {/* Sub-Navigation Menu Bar (Desktop + Mobile Off-Canvas Drawer) */}
+        {(() => {
+          const adminSubTabs = [
+            { id: "currency", label: "Kurlar", icon: DollarSign, desc: "Döviz Kuru & CollectAPI Entegrasyonu" },
+            { id: "products", label: "Ürünler", icon: Package, badge: products.length, desc: "Üretim Kataloğu Veritabanı" },
+            { id: "categories", label: "Kategoriler", icon: Tag, badge: categoriesList.length, desc: "Ambalaj Kategori Yönetimi" },
+            { id: "multipliers", label: "Fiyat & İndirimler", icon: Layers, desc: "Fiyat Çarpanları & Miktar İndirimleri" },
+            { id: "articles", label: "Makale Yönetimi", icon: BookOpen, badge: articles.length, desc: "Ambalaj Rehberi & SEO" },
+            { id: "security", label: "Ayarlar", icon: ShieldCheck, desc: "Admin Giriş & Güvenlik Ayarları" }
+          ];
+
+          const activeTabObj = adminSubTabs.find(t => t.id === activeAdminSubTab) || adminSubTabs[0];
+          const ActiveIcon = activeTabObj.icon;
+
+          return (
+            <>
+              {/* DESKTOP TAB BAR (hidden on mobile) */}
+              <div className="hidden md:block bg-white border border-slate-200/80 rounded-2xl p-2 shadow-sm overflow-x-auto">
+                <div className="flex items-center space-x-1 min-w-max">
+                  {adminSubTabs.map((tab) => {
+                    const IconComp = tab.icon;
+                    const isActive = activeAdminSubTab === tab.id;
+
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => handleSubTabChange(tab.id as any)}
+                        className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer whitespace-nowrap ${
+                          isActive
+                            ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/80"
+                        }`}
+                      >
+                        <IconComp className={`w-4 h-4 ${isActive ? "text-white" : "text-slate-400 group-hover:text-slate-600"}`} />
+                        <span>{tab.label}</span>
+                        {tab.badge !== undefined && (
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-extrabold ${
+                            isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
+                          }`}>
+                            {tab.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* MOBILE BAR WITH OFF-CANVAS TRIGGER (visible on mobile only) */}
+              <div className="md:hidden bg-white border border-slate-200/80 rounded-2xl p-3 shadow-sm flex items-center justify-between">
+                <div className="flex items-center space-x-3 min-w-0 pr-2">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0">
+                    <ActiveIcon className="w-4.5 h-4.5 text-indigo-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-mono text-slate-400 uppercase font-extrabold tracking-wider">Aktif Modül</div>
+                    <div className="text-xs font-extrabold text-slate-900 flex items-center space-x-1.5 truncate">
+                      <span className="truncate">{activeTabObj.label}</span>
+                      {activeTabObj.badge !== undefined && (
+                        <span className="bg-indigo-50 text-indigo-700 text-[10px] font-mono font-extrabold px-2 py-0.5 rounded-full border border-indigo-200 shrink-0">
+                          {activeTabObj.badge}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsMobileMenuOpen(true)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-3.5 py-2.5 rounded-xl flex items-center space-x-2 transition-all cursor-pointer shadow-md shadow-indigo-600/20 shrink-0"
+                >
+                  <Menu className="w-4 h-4" />
+                  <span>Modüller</span>
+                </button>
+              </div>
+
+              {/* OFF-CANVAS DRAWER MODAL */}
+              <AnimatePresence>
+                {isMobileMenuOpen && (
+                  <div className="fixed inset-0 z-50 flex">
+                    {/* Backdrop */}
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
+                    />
+
+                    {/* Drawer Content */}
+                    <motion.div
+                      initial={{ x: "-100%" }}
+                      animate={{ x: 0 }}
+                      exit={{ x: "-100%" }}
+                      transition={{ type: "spring", damping: 25, stiffness: 250 }}
+                      className="relative ml-0 w-full max-w-xs bg-white h-full shadow-2xl flex flex-col z-10 p-6 space-y-6 overflow-y-auto"
+                    >
+                      {/* Drawer Header */}
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/20">
+                            <ShieldCheck className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="font-extrabold text-sm text-slate-900 font-display">Yönetim Modülleri</h3>
+                            <p className="text-[10px] text-slate-400 font-medium">Modül seçimi yapın</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="p-1.5 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      {/* Drawer Menu List */}
+                      <div className="space-y-2 flex-1">
+                        {adminSubTabs.map((tab) => {
+                          const IconComp = tab.icon;
+                          const isActive = activeAdminSubTab === tab.id;
+
+                          return (
+                            <button
+                              key={tab.id}
+                              onClick={() => {
+                                handleSubTabChange(tab.id as any);
+                                setIsMobileMenuOpen(false);
+                              }}
+                              className={`w-full text-left p-3.5 rounded-2xl flex items-center justify-between transition-all cursor-pointer ${
+                                isActive
+                                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                                  : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/70"
+                              }`}
+                            >
+                              <div className="flex items-center space-x-3 min-w-0 pr-2">
+                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                                  isActive ? "bg-white/20 text-white" : "bg-white text-indigo-600 border border-slate-200"
+                                }`}>
+                                  <IconComp className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-extrabold truncate flex items-center space-x-1.5">
+                                    <span>{tab.label}</span>
+                                    {tab.badge !== undefined && (
+                                      <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded-full font-extrabold ${
+                                        isActive ? "bg-white/20 text-white" : "bg-indigo-50 text-indigo-700"
+                                      }`}>
+                                        {tab.badge}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className={`text-[10px] truncate ${isActive ? "text-indigo-100" : "text-slate-400"}`}>
+                                    {tab.desc}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <ChevronRight className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400"}`} />
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Drawer Footer */}
+                      <div className="border-t border-slate-100 pt-4 text-center">
+                        <p className="text-[10px] font-mono text-slate-400">Ambalaj Market v2.5 Admin</p>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+            </>
+          );
+        })()}
+
         {/* SECTION 1: DÖVİZ VE AYAR KARTI */}
+        {activeAdminSubTab === "currency" && (
         <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
             <div className="flex items-center space-x-3">
@@ -1205,15 +1685,17 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
               </button>
             </div>
 
-            <div className="md:col-span-12 flex items-center space-x-1.5 text-[11px] font-mono text-slate-600 bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl">
+            <div className="md:col-span-12 flex items-center space-x-2 text-[11px] font-mono text-slate-700 bg-emerald-50/70 border border-emerald-200/80 px-3.5 py-2.5 rounded-xl">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              <span>Canlı Piyasa Entegrasyonu: "Canlı Kuru Güncelle (CollectAPI)" butonuna tıklayarak anlık USD/TRY kurunu çekebilir veya manuel kur girebilirsiniz.</span>
+              <span>⚡ <strong>Otomatik Kur Güncelleme Aktif:</strong> USD/TRY kurları her 30 dakikada bir CollectAPI üzerinden otomatik olarak çekilip güncellenmektedir. Dilerseniz "Canlı Kuru Güncelle" butonu ile anlık tetikleme de yapabilirsiniz.</span>
             </div>
 
           </form>
         </div>
+        )}
 
         {/* SECTION 1.5: KATEGORİ YÖNETİM KARTI (SCALABLE 100+ CATEGORIES & FULL CRUD) */}
+        {activeAdminSubTab === "categories" && (
         <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
             <div className="flex items-center space-x-3">
@@ -1310,8 +1792,10 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
             </div>
           )}
         </div>
+        )}
 
         {/* SECTION 1.8: FİYAT ÇARPANLARI YÖNETİMİ (FULL EDITABLE CRUD ŞABLON KARTI) */}
+        {activeAdminSubTab === "multipliers" && (
         <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
             <div className="flex items-center space-x-3">
@@ -1365,9 +1849,124 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
             ))}
           </div>
         </div>
+        )}
+
+        {/* SECTION 1.7: AMBALAJ REHBERİ YÖNETİMİ (KNOWLEDGE HUB & SEO CONTENT) */}
+        {activeAdminSubTab === "articles" && (
+        <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h2 className="font-extrabold text-base text-slate-900">Ambalaj Rehberi (SEO & Makale) Yönetimi</h2>
+                  <span className="bg-purple-50 text-purple-700 text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-purple-200">
+                    {articles.length} Rehber Makale
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 font-medium">SEO uyumlu rehber makaleleri ve S.S.S. bölümlerini ekleyin, düzenleyin ve silin.</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Search Input */}
+              <div className="relative w-full sm:w-48">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Makale ara..."
+                  value={articleSearchQuery}
+                  onChange={(e) => setArticleSearchQuery(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs pl-8 pr-3 py-1.5 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleOpenAddArticleModal}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs py-1.5 px-3.5 rounded-xl flex items-center space-x-1.5 transition-all cursor-pointer shadow-md shadow-purple-600/20 shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Yeni Makale Ekle</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsArticlesCollapsed(prev => !prev)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                {isArticlesCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {!isArticlesCollapsed && (
+            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+              <table className="w-full text-left border-collapse font-sans text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-mono uppercase text-[10px]">
+                    <th className="py-3 px-4">Başlık</th>
+                    <th className="py-3 px-4">Kategori</th>
+                    <th className="py-3 px-4">Okuma Süresi</th>
+                    <th className="py-3 px-4">Tarih</th>
+                    <th className="py-3 px-4">İlgili Ürün</th>
+                    <th className="py-3 px-4 text-right">İşlemler</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {articles
+                    .filter(a => !articleSearchQuery || a.baslik.toLowerCase().includes(articleSearchQuery.toLowerCase()) || a.kategori.toLowerCase().includes(articleSearchQuery.toLowerCase()))
+                    .map((art) => (
+                      <tr key={art.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3 px-4 font-bold text-slate-900 max-w-xs truncate">
+                          {art.baslik}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded text-[10px]">
+                            {art.kategori}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 font-mono">{art.okuma_suresi}</td>
+                        <td className="py-3 px-4 text-slate-500 font-mono">{art.tarih}</td>
+                        <td className="py-3 px-4 text-indigo-600 font-mono font-bold">{art.related_product || "-"}</td>
+                        <td className="py-3 px-4 text-right space-x-2">
+                          <button
+                            onClick={() => handleOpenEditArticleModal(art)}
+                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                            title="Düzenle"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteArticle(art.id, art.baslik)}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Sil"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  {articles.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-slate-400 font-medium">
+                        Henüz rehber makale eklenmedi.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        )}
 
         {/* SECTION 2: ÜRÜN YÖNETİM TABLOSU (FULL CRUD) */}
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-6">
+        {activeAdminSubTab === "products" && (
+          <>
+          <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-6">
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center space-x-3">
@@ -1611,6 +2210,122 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
             <span>Önbelleği Temizle & Yenile</span>
           </button>
         </div>
+        </>
+        )}
+
+        {/* SECTION 6: ADMİN GİRİŞ & GÜVENLİK AYARLARI */}
+        {activeAdminSubTab === "security" && (
+          <div className="bg-white border border-slate-200/80 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div>
+                  <h2 className="font-extrabold text-lg text-slate-900">Admin Giriş & Güvenlik Ayarları</h2>
+                  <p className="text-xs text-slate-500 font-medium">Yönetim paneline giriş kullanıcı adınızı ve şifrenizi güvenli şekilde güncelleyin.</p>
+                </div>
+              </div>
+              <span className="bg-slate-100 text-slate-700 text-xs font-mono font-bold px-3 py-1 rounded-full border border-slate-200 self-start sm:self-auto">
+                Güvenlik Seviyesi: Yüksek
+              </span>
+            </div>
+
+            <form onSubmit={handleSaveSecuritySettings} className="max-w-2xl space-y-5">
+              {/* Username Field */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                  Yönetici Kullanıcı Adı
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                  <input
+                    type="text"
+                    value={securityUsername}
+                    onChange={(e) => setSecurityUsername(e.target.value)}
+                    placeholder="Kullanıcı adı"
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-4 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium">Giriş yaparken kullanacağınız kullanıcı adı (Varsayılan: poset).</p>
+              </div>
+
+              {/* Current Password Field */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                  Mevcut Şifreniz <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                  <input
+                    type={showSecurityPasswords ? "text" : "password"}
+                    value={securityCurrentPassword}
+                    onChange={(e) => setSecurityCurrentPassword(e.target.value)}
+                    placeholder="Mevcut şifrenizi girin"
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-10 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSecurityPasswords(!showSecurityPasswords)}
+                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showSecurityPasswords ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium">Değişiklikleri onaylamak için mevcut şifrenizi girmeniz zorunludur (Varsayılan: 654321).</p>
+              </div>
+
+              <div className="border-t border-slate-100 pt-4 grid md:grid-cols-2 gap-4">
+                {/* New Password Field */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                    Yeni Şifre (İsteğe Bağlı)
+                  </label>
+                  <div className="relative">
+                    <Key className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                    <input
+                      type={showSecurityPasswords ? "text" : "password"}
+                      value={securityNewPassword}
+                      onChange={(e) => setSecurityNewPassword(e.target.value)}
+                      placeholder="Yeni şifre (Değiştirmek istemiyorsanız boş bırakın)"
+                      className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-4 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Confirm New Password Field */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                    Yeni Şifre Tekrar
+                  </label>
+                  <div className="relative">
+                    <Key className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                    <input
+                      type={showSecurityPasswords ? "text" : "password"}
+                      value={securityNewPasswordConfirm}
+                      onChange={(e) => setSecurityNewPasswordConfirm(e.target.value)}
+                      placeholder="Yeni şifreyi tekrar girin"
+                      className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-4 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end">
+                <button
+                  type="submit"
+                  disabled={isSavingSecurity}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs py-3 px-6 rounded-xl flex items-center space-x-2 transition-all cursor-pointer shadow-lg shadow-indigo-600/20 disabled:opacity-50"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>{isSavingSecurity ? "Kaydediliyor..." : "Güvenlik Bilgilerini Güncelle"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
       </div>
 
@@ -2417,6 +3132,374 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
 
             </form>
           </motion.div>
+        </div>
+      )}
+
+      {/* MODAL: Yeni / Düzenle Rehber Makalesi */}
+      {isArticleModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200 p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-center">
+                  <BookOpen className="w-5 h-5 text-purple-600" />
+                </div>
+                <h3 className="font-extrabold text-lg text-slate-900 font-display">
+                  {editingArticle ? "Rehber Makalesini Düzenle" : "Yeni Rehber Makalesi Ekle"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsArticleModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveArticleModal} className="space-y-4 text-xs font-sans">
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 block">Makale Başlığı *</label>
+                <input
+                  type="text"
+                  required
+                  value={articleFormData.baslik || ""}
+                  onChange={(e) => setArticleFormData(prev => ({ ...prev, baslik: e.target.value }))}
+                  placeholder="örn: E-Ticarette Doğru Kargo Poşeti Seçimi..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:border-purple-600 outline-none"
+                />
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700 block">Kategori</label>
+                  <select
+                    value={articleFormData.kategori || "E-TİCARET VE KARGO AMBALAJLARI"}
+                    onChange={(e) => setArticleFormData(prev => ({ ...prev, kategori: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:border-purple-600 outline-none"
+                  >
+                    <option value="E-TİCARET VE KARGO AMBALAJLARI">E-TİCARET VE KARGO AMBALAJLARI</option>
+                    <option value="PLASTİK POŞETLER">PLASTİK POŞETLER</option>
+                    <option value="KAĞIT VE KARTON ÇANTALAR">KAĞIT VE KARTON ÇANTALAR</option>
+                    <option value="BEZ VE TELA ÇANTALAR">BEZ VE TELA ÇANTALAR</option>
+                    <option value="KORUYUCU VE ENDÜSTRİYEL AMBALAJ">KORUYUCU VE ENDÜSTRİYEL AMBALAJ</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700 block">İlgili Ürün Seçimi</label>
+                  <select
+                    value={articleFormData.related_product || ""}
+                    onChange={(e) => setArticleFormData(prev => ({ ...prev, related_product: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-mono text-xs focus:bg-white focus:border-purple-600 outline-none"
+                  >
+                    <option value="">Seçim Yapılmadı (Genel Rehber)</option>
+                    {products.map((p) => (
+                      <option key={p.urun_kodu} value={p.urun_kodu}>
+                        {p.urun_kodu} - {p.urun_adi} ({p.olculer})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 block">Kapak Görseli URL (Opsiyonel)</label>
+                <input
+                  type="text"
+                  value={articleFormData.gorsel_url || ""}
+                  onChange={(e) => setArticleFormData(prev => ({ ...prev, gorsel_url: e.target.value }))}
+                  placeholder="örn: /images/rehber/kargo.jpg (Boş bırakılırsa ilgili ürünün görseli kullanılır)"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-mono text-xs focus:bg-white focus:border-purple-600 outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 block">Alt Başlık / Spot Cümle</label>
+                <input
+                  type="text"
+                  value={articleFormData.alt_baslik || ""}
+                  onChange={(e) => setArticleFormData(prev => ({ ...prev, alt_baslik: e.target.value }))}
+                  placeholder="örn: Ürün nakliyesinde kayıp ve hasar riskini sıfıra indiren ambalaj ipuçları"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:border-purple-600 outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 block">Özet (Kart Görünümü)</label>
+                <textarea
+                  rows={2}
+                  value={articleFormData.ozet || ""}
+                  onChange={(e) => setArticleFormData(prev => ({ ...prev, ozet: e.target.value }))}
+                  placeholder="Makalenin liste kartında görünecek kısa özeti..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:border-purple-600 outline-none resize-y"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 block">
+                  Detaylı İçerik ve Paragraflar
+                </label>
+                <textarea
+                  rows={6}
+                  required
+                  value={articleFormData.icerik || ""}
+                  onChange={(e) => setArticleFormData(prev => ({ ...prev, icerik: e.target.value }))}
+                  placeholder="Paragraflarınızı buraya yazın..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 font-medium focus:bg-white focus:border-purple-600 outline-none resize-y"
+                />
+              </div>
+
+              {/* Dynamic S.S.S. (FAQ) Section */}
+              <div className="space-y-3 pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <h4 className="font-extrabold text-slate-900 text-xs">Sıkça Sorulan Sorular (S.S.S.)</h4>
+                    <p className="text-[10px] text-slate-500">Google SEO zengin sonuçları (FAQSchema) ve akordeon kartları için dinamik S.S.S. maddeleri ekleyin.</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddSssItem}
+                    className="bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs py-1.5 px-3 rounded-xl flex items-center space-x-1 transition-all cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Soru & Cevap Ekle</span>
+                  </button>
+                </div>
+
+                {Array.isArray(articleFormData.sss) && articleFormData.sss.length > 0 ? (
+                  <div className="space-y-3 max-h-60 overflow-y-auto p-1">
+                    {articleFormData.sss.map((item, index) => (
+                      <div key={index} className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2 relative group">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-[10px] font-bold text-purple-700 uppercase">S.S.S. #{index + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSssItem(index)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Bu soruyu sil"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <input
+                          type="text"
+                          value={item.soru || ""}
+                          onChange={(e) => handleSssChange(index, "soru", e.target.value)}
+                          placeholder="Soru metni (örn: Kargo poşetlerinde ideal mikron kalınlığı kaç olmalıdır?)"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-slate-900 font-semibold text-xs focus:border-purple-600 outline-none"
+                        />
+
+                        <textarea
+                          rows={2}
+                          value={item.cevap || ""}
+                          onChange={(e) => handleSssChange(index, "cevap", e.target.value)}
+                          placeholder="Cevap metni..."
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-slate-800 text-xs focus:border-purple-600 outline-none resize-y font-medium"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400 italic bg-slate-50 p-3 rounded-xl border border-slate-200/60 text-center">
+                    Henüz özel S.S.S. sorusu eklenmedi. İsteğe bağlı olarak "+ Soru & Cevap Ekle" butonu ile ekleyebilirsiniz.
+                  </p>
+                )}
+              </div>
+
+              {/* SECTION: ARAMA MOTORU SEO ALANLARI */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3.5">
+                <div className="flex items-center space-x-2 border-b border-slate-200/80 pb-2.5">
+                  <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
+                    <Globe className="w-3.5 h-3.5" />
+                  </div>
+                  <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
+                    Arama Motoru SEO Alanları
+                  </h4>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="font-bold text-slate-700 block text-[11px]">
+                      SEO Başlığı (Meta Title)
+                    </label>
+                    <span className={`text-[10px] font-mono font-bold ${
+                      (articleFormData.seo?.meta_title || "").length > 65 ? "text-rose-600" : "text-slate-400"
+                    }`}>
+                      {(articleFormData.seo?.meta_title || "").length} / 65 karakter
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    maxLength={65}
+                    value={articleFormData.seo?.meta_title || ""}
+                    onChange={(e) => setArticleFormData(prev => ({
+                      ...prev,
+                      seo: { ...prev.seo, meta_title: e.target.value }
+                    }))}
+                    placeholder="örn: En Kaliteli Kargo Poşeti Çözümleri | Poset.com"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-medium text-xs focus:border-blue-600 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="font-bold text-slate-700 block text-[11px]">
+                      Meta Açıklama (Description)
+                    </label>
+                    <span className={`text-[10px] font-mono font-bold ${
+                      (articleFormData.seo?.meta_description || "").length > 160 ? "text-rose-600" : "text-slate-400"
+                    }`}>
+                      {(articleFormData.seo?.meta_description || "").length} / 160 karakter
+                    </span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    maxLength={160}
+                    value={articleFormData.seo?.meta_description || ""}
+                    onChange={(e) => setArticleFormData(prev => ({
+                      ...prev,
+                      seo: { ...prev.seo, meta_description: e.target.value }
+                    }))}
+                    placeholder="örn: E-ticaret gönderileriniz için yırtılmaz kargo poşetlerinin toptan fiyatları ve teknik rehberi..."
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-medium text-xs focus:border-blue-600 outline-none resize-y"
+                  />
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-700 block text-[11px]">
+                      Odak Anahtar Kelimeler (Virgülle Ayrılmış)
+                    </label>
+                    <input
+                      type="text"
+                      value={Array.isArray(articleFormData.seo?.keywords) ? articleFormData.seo.keywords.join(", ") : ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const kws = val ? val.split(",").map(k => k.trim()).filter(Boolean) : [];
+                        setArticleFormData(prev => ({
+                          ...prev,
+                          seo: { ...prev.seo, keywords: kws }
+                        }));
+                      }}
+                      placeholder="kargo poşeti, ambalaj, toptan poşet"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-mono text-xs focus:border-blue-600 outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-700 block text-[11px]">
+                      Hedef Sevkiyat / Geo Bölge
+                    </label>
+                    <select
+                      value={articleFormData.seo?.geo_region || "Tüm Türkiye"}
+                      onChange={(e) => setArticleFormData(prev => ({
+                        ...prev,
+                        seo: { ...prev.seo, geo_region: e.target.value }
+                      }))}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 font-medium text-xs focus:border-blue-600 outline-none"
+                    >
+                      <option value="Tüm Türkiye">Tüm Türkiye</option>
+                      <option value="İstanbul İçi Hızlı Teslimat">İstanbul İçi Hızlı Teslimat</option>
+                      <option value="Yurt Dışı / İhracat">Yurt Dışı / İhracat</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION: GEO & YAPAY ZEKA ARAMA ALANLARI (AI Overviews Odaklı) */}
+              <div className="bg-purple-50/60 border border-purple-200 rounded-2xl p-4 space-y-3.5">
+                <div className="flex items-center space-x-2 border-b border-purple-200/80 pb-2.5">
+                  <div className="w-6 h-6 rounded-lg bg-purple-600 text-white flex items-center justify-center">
+                    <BookOpen className="w-3.5 h-3.5" />
+                  </div>
+                  <h4 className="font-extrabold text-purple-950 text-xs uppercase tracking-wider">
+                    GEO & Yapay Zeka Arama Alanları (AI Overviews)
+                  </h4>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700 block text-[11px]">
+                    Yapay Zeka Doğrudan Cevap / Tanım (Quick Answer)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={articleFormData.geo_ai?.quick_answer || ""}
+                    onChange={(e) => setArticleFormData(prev => ({
+                      ...prev,
+                      geo_ai: { ...prev.geo_ai, quick_answer: e.target.value }
+                    }))}
+                    placeholder="AI arama motorlarının alıntılayacağı 2 cümlelik net tanım kutusu..."
+                    className="w-full bg-white border border-purple-200/80 rounded-xl px-3 py-2 text-slate-900 font-medium text-xs focus:border-purple-600 outline-none resize-y"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-slate-700 block text-[11px]">
+                      Önemli Çıkarımlar / Maddeler (Key Takeaways - Maks. 4)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleAddKeyTakeaway}
+                      disabled={(articleFormData.geo_ai?.key_takeaways || []).length >= 4}
+                      className="bg-purple-100 hover:bg-purple-200 disabled:opacity-40 text-purple-800 font-bold text-[11px] py-1 px-2.5 rounded-lg flex items-center space-x-1 transition-all cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>+ Madde Ekle</span>
+                    </button>
+                  </div>
+
+                  {Array.isArray(articleFormData.geo_ai?.key_takeaways) && articleFormData.geo_ai.key_takeaways.length > 0 ? (
+                    <div className="space-y-2">
+                      {articleFormData.geo_ai.key_takeaways.map((item, index) => (
+                        <div key={index} className="flex items-center space-x-2">
+                          <span className="font-mono text-[10px] font-bold text-purple-700 w-4">{index + 1}.</span>
+                          <input
+                            type="text"
+                            value={item || ""}
+                            onChange={(e) => handleKeyTakeawayChange(index, e.target.value)}
+                            placeholder={`Madde #${index + 1} (örn: Yırtılma direnci yüksek LDPE hammadde)`}
+                            className="flex-1 bg-white border border-purple-200/80 rounded-xl px-3 py-1.5 text-slate-900 font-medium text-xs focus:border-purple-600 outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveKeyTakeaway(index)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-400 italic">
+                      Henüz özet maddesi eklenmedi. "+ Madde Ekle" butonuna basarak en fazla 4 adet özet maddesi tanımlayabilirsiniz.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setIsArticleModalOpen(false)}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2.5 rounded-xl cursor-pointer"
+                >
+                  İptal
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSavingArticle}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-extrabold px-6 py-2.5 rounded-xl shadow-md shadow-purple-600/20 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingArticle ? "Kaydediliyor..." : (editingArticle ? "Güncellemeleri Kaydet" : "Makaleyi Yayınla")}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

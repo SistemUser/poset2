@@ -5,7 +5,7 @@ import { IMAGES } from "../constants";
 import { TAXONOMY_PRODUCTS, CATEGORIES, TaxonomyProduct } from "../productsData";
 import { useAppConfig } from "../AppContext";
 import { getSubfolderPrefix } from "../utils/urlHelper";
-import Footer from "./Footer";
+import { getImgSrc, handleImageError } from "../utils/imageHelper";
 
 interface CatalogTabProps {
   onAddToQuoteList: (product: Product) => void;
@@ -15,20 +15,16 @@ interface CatalogTabProps {
 }
 
 export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab, selectedCategory }: CatalogTabProps) {
-  const { formatTL, products: dbProducts, categories: contextCategories } = useAppConfig();
+  const { settings, formatTL, products: dbProducts, categories: contextCategories } = useAppConfig();
   
   // Live API cache-busting categories state
   const [liveCategories, setLiveCategories] = useState<any[]>([]);
 
   React.useEffect(() => {
-    // Clear stale category caches from localStorage
-    try {
-      localStorage.removeItem("categories");
-      localStorage.removeItem("poset_categories");
-      localStorage.removeItem("poset_app_categories");
-    } catch (e) {}
-
-    fetch(`/api/categories?t=${Date.now()}`, { cache: "no-store" })
+    fetch(getApiEndpoint(`api/categories?t=${Date.now()}`), { 
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" }
+    })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -46,8 +42,8 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
   const [activeBaski, setActiveBaski] = useState<string>("");
   const [minMikron, setMinMikron] = useState("");
   const [maxMikron, setMaxMikron] = useState("");
-  const [addedProductId, setAddedProductId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState("Önerilenler");
+  const [cardCustomDims, setCardCustomDims] = useState<Record<string, { en: string; boy: string; koruk: string }>>({});
 
   // Sync selectedCategory from parent tab navigation
   React.useEffect(() => {
@@ -239,6 +235,14 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
   // Run dynamic filter algorithm
   const filteredProducts = useMemo(() => {
     let result = allTaxonomyProducts.filter(p => {
+      // 0. Filter out products where ALL variants are Stokta Yok
+      const inStockVariants = p.variants.filter(v => {
+        const live = dbProducts.find(dbP => dbP.urun_kodu && v.urun_kodu && dbP.urun_kodu.trim().toLowerCase() === v.urun_kodu.trim().toLowerCase());
+        const stok = live?.stok_durumu || v.stok_durumu || "Siparişle";
+        return stok !== "Yok" && stok !== "Stokta Yok";
+      });
+      if (inStockVariants.length === 0) return false;
+
       // Kullanim category filter match
       if (activeKullanim.length > 0) {
         const matchesCategory = activeKullanim.some(selectedKeyOrLabel => {
@@ -307,7 +311,10 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
     // Adapter conversion to general shape
     const activeVariant = prod.variants.find(v => v.urun_kodu === (selectedVariantCodes[prod.id] || prod.variants[0].urun_kodu)) || prod.variants[0];
     const liveDb = dbProducts.find(p => Boolean(p.urun_kodu) && Boolean(activeVariant.urun_kodu) && p.urun_kodu === activeVariant.urun_kodu);
-    const unitP = Number(liveDb?.birim_fiyat ?? liveDb?.birim_fiyati ?? activeVariant.birim_fiyati) || 0;
+    const rawP = Number(liveDb?.birim_fiyat ?? liveDb?.birim_fiyati ?? activeVariant.birim_fiyati) || 0;
+    const curr = (liveDb?.para_birimi || activeVariant.para_birimi || "TL").toUpperCase();
+    const rate = Number(settings?.usd_try_rate || settings?.dolar_kuru || 35.0);
+    const unitP = curr === "USD" ? rawP * rate : rawP;
     const isQuote = liveDb?.fiyat_aliniz === true || unitP === 0;
 
     const item: Product = {
@@ -523,24 +530,39 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6" id="catalog-main-grid">
               {paginatedProducts.map((prod) => {
                 const activeVariantCode = selectedVariantCodes[prod.id] || prod.variants[0].urun_kodu;
+                const isCustomSize = activeVariantCode === "custom" || activeVariantCode === "custom_other";
                 const activeVariant = prod.variants.find(v => v.urun_kodu === activeVariantCode) || prod.variants[0];
                 
-                // Live override from Admin Panel / dbProducts - strictly match by urun_kodu
-                const liveDbProd = dbProducts.find(p => 
-                  Boolean(p.urun_kodu) && Boolean(activeVariant.urun_kodu) && p.urun_kodu === activeVariant.urun_kodu
+                // Live override from Admin Panel / dbProducts - match with trim, lowerCase, and fallback
+                const activeCleanCode = (activeVariant.urun_kodu || "").trim().toLowerCase();
+                const liveDbProd = dbProducts.find(p => {
+                  const pCode = (p.urun_kodu || (p as any).sku || "").trim().toLowerCase();
+                  return Boolean(pCode) && Boolean(activeCleanCode) && pCode === activeCleanCode;
+                }) || dbProducts.find(p => 
+                  Boolean(p.urun_adi) && Boolean(prod.name) && p.urun_adi.trim().toLowerCase() === prod.name.trim().toLowerCase() &&
+                  Boolean(p.olculer) && Boolean(activeVariant.olculer) && p.olculer.trim().toLowerCase() === activeVariant.olculer.trim().toLowerCase()
                 );
-                const rawPrice = liveDbProd?.birim_fiyat ?? liveDbProd?.birim_fiyati ?? (activeVariant as any)?.birim_fiyat ?? activeVariant?.birim_fiyati ?? 0;
+                const rawPrice = liveDbProd?.birim_fiyat ?? 
+                  liveDbProd?.birim_fiyati ?? 
+                  (activeVariant as any)?.birim_fiyat ?? 
+                  activeVariant?.birim_fiyati ?? 
+                  (prod as any)?.birim_fiyati ?? 
+                  (prod as any)?.price ?? 
+                  0;
                 const effectivePrice = typeof rawPrice === 'number' ? rawPrice : (parseFloat(String(rawPrice).replace(',', '.')) || 0);
-                const effectiveCurrency = liveDbProd?.para_birimi || activeVariant.para_birimi || "TL";
-                const effectiveStok = liveDbProd?.stok_durumu || activeVariant.stok_durumu || "Siparişle";
+                const effectiveCurrency = (liveDbProd?.para_birimi || activeVariant.para_birimi || "TL").toUpperCase();
+                const effectiveStok = isCustomSize ? "Siparişle" : (liveDbProd?.stok_durumu || activeVariant.stok_durumu || "Siparişle");
                 const satisSekli = liveDbProd?.satis_sekli || activeVariant.satis_sekli || "Adet";
                 const baskiDurumu = liveDbProd?.baski_durumu || activeVariant.baski_durumu || "Baskılı";
                 const fiyatCarpanlariStr = liveDbProd?.fiyat_carpanlari || activeVariant.fiyat_carpanlari || "5k:1.00 / 10k:0.92 / 25k:0.85";
 
                 const priceTiers = parsePriceMultipliers(fiyatCarpanlariStr, satisSekli);
                 const currentMultiplier = selectedMultipliers[prod.id] !== undefined ? selectedMultipliers[prod.id] : (priceTiers[0]?.multiplier || 1.0);
-                const finalUnitPrice = effectivePrice * currentMultiplier;
-                const isQuoteOnly = !finalUnitPrice || finalUnitPrice <= 0 || isNaN(finalUnitPrice);
+                const baseUnitPrice = effectivePrice * currentMultiplier;
+
+                const usdRate = Number(settings?.usd_try_rate || settings?.dolar_kuru || 35.0);
+                const finalTLPrice = effectiveCurrency === "USD" ? (baseUnitPrice * usdRate) : baseUnitPrice;
+                const isQuoteOnly = isCustomSize || liveDbProd?.fiyat_aliniz === true || (liveDbProd as any)?.is_quote_only === true || (prod as any)?.fiyat_aliniz === true || !finalTLPrice || finalTLPrice <= 0 || isNaN(finalTLPrice);
 
                 return (
                   <div 
@@ -553,22 +575,29 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
                       {/* Centered Image wrap */}
                       <div className="h-48 bg-slate-50 relative overflow-hidden flex items-center justify-center">
                         <img 
-                          src={prod.imgUrl} 
+                          src={getImgSrc(prod.imgUrl)} 
                           alt={prod.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           referrerPolicy="no-referrer"
+                          onError={handleImageError}
                         />
                         
                         {/* Floating Badges in top-right area */}
                         <div className="absolute top-3.5 right-3.5 flex flex-wrap gap-1.5 justify-end">
                           <span 
                             className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider font-mono shadow-xs border ${
-                              effectiveStok === "Var"
+                              effectiveStok === "Var" || effectiveStok === "Stokta Var"
                                 ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : "bg-blue-50 text-blue-700 border-blue-200"
+                                : effectiveStok === "Yok" || effectiveStok === "Stokta Yok"
+                                  ? "bg-rose-50 text-rose-700 border-rose-200"
+                                  : "bg-blue-50 text-blue-700 border-blue-200"
                             }`}
                           >
-                            {effectiveStok === "Var" ? "Stokta Var" : "Sipariş Üzerine Üretim"}
+                            {effectiveStok === "Var" || effectiveStok === "Stokta Var"
+                              ? "Stokta Var"
+                              : effectiveStok === "Yok" || effectiveStok === "Stokta Yok"
+                                ? "Stokta Yok"
+                                : "Sipariş Üzerine Üretim"}
                           </span>
                           {prod.badges.map((b: string, i: number) => (
                             <span 
@@ -600,18 +629,71 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
 
                         {/* Dropdown Select for variants */}
                         <div className="space-y-1">
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none font-mono">Ölçü Seçimi</span>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none font-mono">Ölçe Seçimi</span>
                           <select
                             value={activeVariantCode}
                             onChange={(e) => setSelectedVariantCodes(prev => ({ ...prev, [prod.id]: e.target.value }))}
                             className="w-full bg-slate-50 border border-slate-200/80 text-xs font-bold text-slate-700 px-3 py-2 rounded-xl focus:bg-white focus:outline-none focus:border-[#0b1c3f] cursor-pointer shadow-3xs"
                           >
-                            {prod.variants.map((v) => (
+                            {prod.variants.filter(v => {
+                              const live = dbProducts.find(dbP => dbP.urun_kodu && v.urun_kodu && dbP.urun_kodu.trim().toLowerCase() === v.urun_kodu.trim().toLowerCase());
+                              const stok = live?.stok_durumu || v.stok_durumu || "Siparişle";
+                              return stok !== "Yok" && stok !== "Stokta Yok";
+                            }).map((v) => (
                               <option key={v.urun_kodu} value={v.urun_kodu}>
                                 {v.olculer} ({v.kalinlik_seviyesi})
                               </option>
                             ))}
+                            <option value="custom_other">⚙ Diğer (Özel Ölçü Belirtiniz...)</option>
                           </select>
+
+                          {/* Mini En/Boy input alanları: "Diğer" seçildiğinde */}
+                          {isCustomSize && (
+                            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-2 mt-2">
+                              <span className="text-[10px] font-extrabold text-indigo-700 block">Özel Ölçü Belirtiniz (cm)</span>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 block">En (cm) *</label>
+                                  <input
+                                    type="number"
+                                    placeholder="En"
+                                    value={cardCustomDims[prod.id]?.en || ""}
+                                    onChange={(e) => setCardCustomDims(prev => ({
+                                      ...prev,
+                                      [prod.id]: { ...(prev[prod.id] || { en: "", boy: "", koruk: "" }), en: e.target.value }
+                                    }))}
+                                    className="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-slate-800"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 block">Boy (cm) *</label>
+                                  <input
+                                    type="number"
+                                    placeholder="Boy"
+                                    value={cardCustomDims[prod.id]?.boy || ""}
+                                    onChange={(e) => setCardCustomDims(prev => ({
+                                      ...prev,
+                                      [prod.id]: { ...(prev[prod.id] || { en: "", boy: "", koruk: "" }), boy: e.target.value }
+                                    }))}
+                                    className="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-slate-800"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 block">Körük (cm)</label>
+                                  <input
+                                    type="number"
+                                    placeholder="Körük"
+                                    value={cardCustomDims[prod.id]?.koruk || ""}
+                                    onChange={(e) => setCardCustomDims(prev => ({
+                                      ...prev,
+                                      [prod.id]: { ...(prev[prod.id] || { en: "", boy: "", koruk: "" }), koruk: e.target.value }
+                                    }))}
+                                    className="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-slate-800"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* Dropdown Select for Fiyat Çarpanları / Miktar İndirimleri */}
@@ -698,14 +780,19 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
                         {!isQuoteOnly ? (
                           <div className="flex flex-col pt-0.5">
                             <span className="text-[17px] font-black tracking-tight text-[#0b1c3f]">
-                              ₺{finalUnitPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              ₺{finalTLPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               <span className="text-xs font-normal text-slate-500 ml-1">/ {satisSekli}</span>
                             </span>
+                            {effectiveCurrency === "USD" && (
+                              <span className="text-[10px] font-semibold text-slate-400">
+                                (${baseUnitPrice.toFixed(2)} USD × ₺{usdRate.toFixed(2)})
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <div className="pt-1">
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs">
-                              Fiyat Alınız
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-blue-100 text-blue-800 border border-blue-300 shadow-xs">
+                              {isCustomSize ? "ÖZEL İMALAT - TEKLİF ALINIZ" : "Fiyat Alınız"}
                             </span>
                           </div>
                         )}
@@ -715,11 +802,19 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
                       <div className="w-full">
                         <button
                           onClick={() => {
-                            const sku = activeVariant.urun_kodu;
-                            const subfolder = getSubfolderPrefix();
-                            window.history.pushState({}, "", `${subfolder}/teklif?sku=${encodeURIComponent(sku)}`);
-                            onCustomizeWithAI(`sku:${sku}`);
-                            setTab("assistant");
+                            if (isCustomSize) {
+                              const cd = cardCustomDims[prod.id];
+                              if (!cd || !cd.en?.trim() || !cd.boy?.trim()) {
+                                alert("Lütfen özel ölçü için en ve boy değerlerini girin");
+                                return;
+                              }
+                              onCustomizeWithAI(`custom:${prod.id}:${cd.en}:${cd.boy}:${cd.koruk || 0}`);
+                              setTab("assistant");
+                            } else {
+                              const sku = activeVariant.urun_kodu;
+                              onCustomizeWithAI(`sku:${sku}`);
+                              setTab("assistant");
+                            }
                           }}
                           className="w-full bg-[#10b981] hover:bg-[#059669] text-white font-extrabold text-xs py-3 rounded-2xl flex items-center justify-center space-x-2 transition-all duration-300 cursor-pointer shadow-xs"
                         >
@@ -782,7 +877,6 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
 
         </div>
       </div>
-      <Footer setTab={setTab} />
     </div>
   );
 }

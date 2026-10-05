@@ -45,6 +45,7 @@ export interface TaxonomyProduct {
   stokDurumu: "Var" | "Siparişle" | "Yok";
   badges: string[];
   imgUrl: string;
+  allow_custom_dimensions?: boolean;
   variants: ProductVariant[];
 }
 

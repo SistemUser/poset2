@@ -64,6 +64,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return defaultSettings;
   });
 
+  const mapProductObject = (p: any): DbProduct => {
+    const rawPrice = p.birim_fiyat ?? p.birim_fiyati ?? p.base_price ?? 0;
+    const price = typeof rawPrice === "number" ? rawPrice : (parseFloat(String(rawPrice).replace(',', '.')) || 0);
+    const isQuote = p.fiyat_aliniz === true || p.is_quote_only === true || price <= 0;
+    const unitVal = p.satis_sekli || p.unit || "Adet";
+    const allowCustom = p.allow_custom_dimensions !== false && p.allow_custom_size !== false;
+
+    return {
+      ...p,
+      birim_fiyat: price,
+      birim_fiyati: price,
+      base_price: price,
+      fiyat_aliniz: isQuote,
+      is_quote_only: isQuote,
+      satis_sekli: unitVal,
+      unit: unitVal,
+      allow_custom_dimensions: allowCustom,
+      allow_custom_size: allowCustom
+    };
+  };
+
   // Initialize products from localStorage cache if present, otherwise []
   const [products, setProducts] = useState<DbProduct[]>(() => {
     try {
@@ -71,17 +92,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (saved) {
         const parsed: DbProduct[] = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((p: any) => {
-            const rawPrice = p.birim_fiyat ?? p.birim_fiyati ?? 0;
-            const price = typeof rawPrice === "number" ? rawPrice : (parseFloat(String(rawPrice).replace(',', '.')) || 0);
-            return {
-              ...p,
-              birim_fiyat: price,
-              birim_fiyati: price,
-              fiyat_aliniz: price <= 0,
-              isPremiumPrice: false
-            };
-          });
+          return parsed.map(mapProductObject);
         }
       }
     } catch (e) {}
@@ -124,55 +135,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [categories]);
 
   const refreshSettings = async () => {
-    try {
-      const res = await fetch(getApiEndpoint("api/admin/settings"));
-      if (res.ok) {
-        const data = await res.json();
-        if (data && typeof data.usd_try_rate === "number") {
-          setSettings(data);
+    const urls = [
+      getApiEndpoint(`api/admin/settings?t=${Date.now()}`),
+      getApiEndpoint(`api/settings?t=${Date.now()}`)
+    ];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && typeof data.usd_try_rate === "number") {
+            setSettings(data);
+            try { localStorage.setItem("poset_app_settings", JSON.stringify(data)); } catch (e) {}
+            return;
+          }
         }
+      } catch (err) {
+        console.warn("Could not fetch settings from API candidate:", err);
       }
-    } catch (err) {
-      console.warn("Could not fetch settings from API, using cached state:", err);
     }
   };
 
   const refreshProducts = async () => {
-    try {
-      const res = await fetch(getApiEndpoint("api/products"));
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const formatted = data.map((p: any) => {
-            const rawPrice = p.birim_fiyat ?? p.birim_fiyati ?? 0;
-            const price = typeof rawPrice === "number" ? rawPrice : (parseFloat(String(rawPrice).replace(',', '.')) || 0);
-            return {
-              ...p,
-              birim_fiyat: price,
-              birim_fiyati: price,
-              fiyat_aliniz: price <= 0,
-              isPremiumPrice: false
-            };
-          });
-          setProducts(formatted);
+    const candidateUrls = [
+      getApiEndpoint("api/products"),
+      getApiEndpoint("api/api.php?action=products"),
+      getApiEndpoint("api/admin.php?action=products"),
+      getApiEndpoint("data/products.json"),
+      "/data/products.json"
+    ];
+
+    for (const url of candidateUrls) {
+      try {
+        const res = await fetch(`${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`, {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" }
+        });
+        if (res.ok) {
+          const contentType = res.headers.get("content-type") || "";
+          if (contentType.includes("application/json") || url.includes("products")) {
+            const data = await res.json();
+            const list = Array.isArray(data) ? data : (data.products || data.data || []);
+            if (Array.isArray(list) && list.length > 0) {
+              const formatted = list.map(mapProductObject);
+              setProducts(formatted);
+              try { localStorage.setItem("poset_app_products", JSON.stringify(formatted)); } catch (e) {}
+              return;
+            }
+          }
         }
+      } catch (err) {
+        console.warn(`Products fetch URL failed (${url}):`, err);
       }
-    } catch (err) {
-      console.warn("Could not fetch products from API, keeping cached state:", err);
     }
   };
 
   const refreshCategories = async () => {
-    try {
-      const res = await fetch(getApiEndpoint("api/admin/categories"));
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setCategories(data);
+    const urls = [
+      getApiEndpoint(`api/admin/categories?t=${Date.now()}`),
+      getApiEndpoint(`api/categories?t=${Date.now()}`)
+    ];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setCategories(data);
+            try { localStorage.setItem("poset_app_categories", JSON.stringify(data)); } catch (e) {}
+            return;
+          }
         }
+      } catch (err) {
+        console.warn("Could not fetch categories from API, keeping cached state:", err);
       }
-    } catch (err) {
-      console.warn("Could not fetch categories from API, keeping cached state:", err);
     }
   };
 
@@ -180,6 +222,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     refreshSettings();
     refreshProducts();
     refreshCategories();
+
+    // Auto refresh on custom sync events (from AdminPanel) and storage changes
+    const handleSync = () => {
+      refreshSettings();
+      refreshProducts();
+      refreshCategories();
+    };
+
+    window.addEventListener("poset:sync", handleSync);
+    window.addEventListener("storage", handleSync);
+
+    // Auto refresh settings & currency rate every 15 minutes
+    const interval = setInterval(() => {
+      refreshSettings();
+      refreshProducts();
+    }, 15 * 60 * 1000);
+
+    return () => {
+      window.removeEventListener("poset:sync", handleSync);
+      window.removeEventListener("storage", handleSync);
+      clearInterval(interval);
+    };
   }, []);
 
   const updateSettings = async (newSettings: Partial<AppSettings>): Promise<boolean> => {

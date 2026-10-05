@@ -11,6 +11,7 @@ import { IMAGES } from "../constants";
 import { ChatMessage, QuoteSpec, ImageType, QuoteItem } from "../types";
 import { CATEGORIES, TAXONOMY_PRODUCTS } from "../productsData";
 import { useAppConfig } from "../AppContext";
+import { getImgSrc, handleImageError } from "../utils/imageHelper";
 
 // Dynamic dimension choices by category group
 const DIMENSIONS_BY_GROUP = {
@@ -207,6 +208,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
   const [selectedDim, setSelectedDim] = useState<string>("30x40 cm");
   const [customDim, setCustomDim] = useState<string>("");
   const [addAdhesivePocket, setAddAdhesivePocket] = useState<boolean>(false);
+  const [customerNote, setCustomerNote] = useState<string>("");
   
   // Download Spec PDF State
   const [isSpecDownloaded, setIsSpecDownloaded] = useState(false);
@@ -255,17 +257,106 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
   const [selectedProductId, setSelectedProductId] = useState<string>("tx-parent-1");
   const [selectedVariantCode, setSelectedVariantCode] = useState<string>("KRG-2030-01");
 
+  // Özel Ölçü (Diğer) State
+  const [isCustomDimension, setIsCustomDimension] = useState<boolean>(false);
+  const [customEn, setCustomEn] = useState<string>("");
+  const [customBoy, setCustomBoy] = useState<string>("");
+  const [customKoruk, setCustomKoruk] = useState<string>("");
+  const [customMikron, setCustomMikron] = useState<string>("");
+
   const availableProducts = useMemo(() => {
-    return TAXONOMY_PRODUCTS.filter(p => p.categoryKey === selectedCategoryKey);
-  }, [selectedCategoryKey]);
+    const rawProds = TAXONOMY_PRODUCTS.filter(p => p.categoryKey === selectedCategoryKey);
+    const allDbProds = (Array.isArray(dbProducts) && dbProducts.length > 0) ? dbProducts : products;
+
+    return rawProds.filter(prod => {
+      return prod.variants.some(v => {
+        const live = allDbProds.find((p: any) => p.urun_kodu && v.urun_kodu && p.urun_kodu.trim().toLowerCase() === v.urun_kodu.trim().toLowerCase());
+        const stok = live?.stok_durumu || v.stok_durumu || "Siparişle";
+        return stok !== "Yok" && stok !== "Stokta Yok";
+      });
+    });
+  }, [selectedCategoryKey, dbProducts, products]);
 
   const selectedProductGroup = useMemo(() => {
     return TAXONOMY_PRODUCTS.find(p => p.id === selectedProductId) || availableProducts[0] || TAXONOMY_PRODUCTS[0];
   }, [selectedProductId, availableProducts]);
 
   const availableVariants = useMemo(() => {
-    return selectedProductGroup?.variants || [];
-  }, [selectedProductGroup]);
+    const raw = selectedProductGroup?.variants || [];
+    const allDbProds = (Array.isArray(dbProducts) && dbProducts.length > 0) ? dbProducts : products;
+
+    return raw.map(v => {
+      const live = allDbProds.find((p: any) => p.urun_kodu && v.urun_kodu && p.urun_kodu.trim().toLowerCase() === v.urun_kodu.trim().toLowerCase());
+      if (!live) return v;
+
+      const livePrice = live.birim_fiyat ?? live.birim_fiyati ?? live.base_price;
+      const numPrice = typeof livePrice === "number" ? livePrice : (parseFloat(String(livePrice).replace(",", ".")) || 0);
+
+      return {
+        ...v,
+        birim_fiyat: numPrice,
+        birim_fiyati: numPrice,
+        fiyat_aliniz: live.fiyat_aliniz === true || live.is_quote_only === true || numPrice <= 0,
+        satis_sekli: live.satis_sekli || live.unit || v.satis_sekli,
+        stok_durumu: live.stok_durumu || v.stok_durumu,
+        kalinlik_seviyesi: live.kalinlik_seviyesi || v.kalinlik_seviyesi,
+        baski_durumu: live.baski_durumu || v.baski_durumu,
+        baski_renk_yon: live.baski_renk_yon || v.baski_renk_yon,
+        termin_suresi: live.termin_suresi || v.termin_suresi,
+        fiyat_carpanlari: live.fiyat_carpanlari || live.fiyat_carpan_sablonu || v.fiyat_carpanlari
+      };
+    }).filter(v => v.stok_durumu !== "Yok" && v.stok_durumu !== "Stokta Yok");
+  }, [selectedProductGroup, dbProducts, products]);
+
+  const activeConfiguratorVariant = useMemo(() => {
+    const baseVariant = availableVariants.find(v => v.urun_kodu === selectedVariantCode) || availableVariants[0] || selectedProductGroup?.variants[0] || null;
+    if (!baseVariant) return null;
+
+    const allDbProds = (Array.isArray(dbProducts) && dbProducts.length > 0) ? dbProducts : products;
+    const live = allDbProds.find((p: any) => p.urun_kodu && baseVariant.urun_kodu && p.urun_kodu.trim().toLowerCase() === baseVariant.urun_kodu.trim().toLowerCase());
+    if (live) {
+      const livePrice = live.birim_fiyat ?? live.birim_fiyati ?? live.base_price;
+      const numPrice = typeof livePrice === "number" ? livePrice : (parseFloat(String(livePrice).replace(",", ".")) || 0);
+      return {
+        ...baseVariant,
+        birim_fiyat: numPrice,
+        birim_fiyati: numPrice,
+        fiyat_aliniz: live.fiyat_aliniz === true || live.is_quote_only === true || numPrice <= 0,
+        satis_sekli: live.satis_sekli || live.unit || baseVariant.satis_sekli,
+        stok_durumu: live.stok_durumu || baseVariant.stok_durumu,
+        kalinlik_seviyesi: live.kalinlik_seviyesi || baseVariant.kalinlik_seviyesi,
+        baski_durumu: live.baski_durumu || baseVariant.baski_durumu,
+        baski_renk_yon: live.baski_renk_yon || baseVariant.baski_renk_yon,
+        termin_suresi: live.termin_suresi || baseVariant.termin_suresi,
+        fiyat_carpanlari: live.fiyat_carpanlari || live.fiyat_carpan_sablonu || (baseVariant as any).fiyat_carpanlari
+      };
+    }
+    return baseVariant;
+  }, [availableVariants, selectedVariantCode, selectedProductGroup, dbProducts, products]);
+
+  const baskiDurumuText = useMemo(() => {
+    if (activeConfiguratorVariant?.baski_durumu === "Baskısız" || selectedProductGroup?.baski === "Baskısız") {
+      return "Baskısız (Düz / Standart)";
+    }
+    return activeConfiguratorVariant?.baski_durumu || "Baskılı (Opsiyonel)";
+  }, [activeConfiguratorVariant, selectedProductGroup]);
+
+  const baskiRenkYonText = useMemo(() => {
+    if (activeConfiguratorVariant?.baski_durumu === "Baskısız" || selectedProductGroup?.baski === "Baskısız") {
+      return "0 + 0 (Düz / Baskısız)";
+    }
+    return activeConfiguratorVariant?.baski_renk_yon || "1 + 0 (Ön Yüz)";
+  }, [activeConfiguratorVariant, selectedProductGroup]);
+
+  const activeCategoryName = useMemo(() => {
+    const key = selectedProductGroup?.categoryKey || selectedCategoryKey;
+    if (key === "kargo_eticaret") return "E-Ticaret & Kargo";
+    if (key === "plastik_poset") return "Plastik Poşetler";
+    if (key === "kagit_karton") return "Kağıt & Karton";
+    if (key === "bez_tela") return "Bez & Tela";
+    if (key === "koruyucu_endustriyel") return "Endüstriyel Ambalaj";
+    return selectedProductGroup?.categoryLabel || "Ambalaj Çözümleri";
+  }, [selectedProductGroup, selectedCategoryKey]);
 
   const selectedVariant = useMemo(() => {
     return products.find(p => p.urun_kodu === selectedSku) || products[0] || null;
@@ -274,28 +365,39 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
   const updateActiveSpecForProductAndVariant = (product: typeof TAXONOMY_PRODUCTS[0], variant: typeof TAXONOMY_PRODUCTS[0]["variants"][0]) => {
     if (!product || !variant) return;
     
-    const isKg = variant.satis_sekli === "Kg";
-    const minMoq = parseInt(variant.moq.replace(/[^0-9]/g, "")) || (isKg ? 500 : 5000);
+    const allDbProds = (Array.isArray(dbProducts) && dbProducts.length > 0) ? dbProducts : products;
+    const live = allDbProds.find((p: any) => p.urun_kodu && variant.urun_kodu && p.urun_kodu.trim().toLowerCase() === variant.urun_kodu.trim().toLowerCase()) ||
+               allDbProds.find((p: any) => product && p.urun_adi === product.name && p.olculer === variant.olculer);
+    
+    const effectiveStok = live?.stok_durumu || variant.stok_durumu || "Siparişle";
+    const effectiveTermin = live?.termin_suresi || variant.termin_suresi || "7 İş Günü";
+    const effectiveBaski = live?.baski_durumu || variant.baski_durumu || "Baskılı";
+    const effectiveRenk = live?.baski_renk_yon || variant.baski_renk_yon || "1 + 0 (Ön Yüz)";
+    const livePriceRaw = live?.birim_fiyat ?? live?.birim_fiyati ?? variant.birim_fiyati;
+    const numLivePrice = typeof livePriceRaw === "number" ? livePriceRaw : (parseFloat(String(livePriceRaw).replace(",", ".")) || 0);
+
+    const isKg = (live?.satis_sekli || variant.satis_sekli) === "Kg";
+    const minMoq = parseInt((live?.moq || variant.moq).replace(/[^0-9]/g, "")) || (isKg ? 500 : 5000);
     
     setAdjustedQty(minMoq);
-    setAdjustedBaskiTercihi(variant.baski_durumu === "Baskısız" ? "Baskısız" : "Baskılı");
-    setAdjustedRenkSayisi(variant.baski_durumu === "Baskısız" ? "Lütfen Renk Sayısı Seçin" : (variant.baski_renk_yon || "1 + 0 (Ön Yüz)"));
+    setAdjustedBaskiTercihi(effectiveBaski === "Baskısız" ? "Baskısız" : "Baskılı");
+    setAdjustedRenkSayisi(effectiveBaski === "Baskısız" ? "Lütfen Renk Sayısı Seçin" : effectiveRenk);
 
     const imgType = PRODUCT_IMAGE_TYPE_MAP[product.name] || "kargoPlastik";
 
     const newSpec: QuoteSpec = {
       name: product.name,
-      dimensions: variant.olculer,
-      material: variant.hammadde_turu,
-      thickness: variant.kalinlik_seviyesi,
+      dimensions: live?.olculer || variant.olculer,
+      material: live?.hammadde_turu || variant.hammadde_turu,
+      thickness: live?.kalinlik_seviyesi || variant.kalinlik_seviyesi,
       closure: variant.kargo_bant_tipi !== "Yok" ? variant.kargo_bant_tipi : (variant.kulp_tipi !== "Yok" ? variant.kulp_tipi : "Standart Yapılandırma"),
       color: variant.zemin_rengi || "Standart Renk",
-      leadTime: variant.stok_durumu === "Var" ? "Aynı Gün / 24 Saat Kargo" : (variant.termin_suresi || "7 İş Günü"),
-      stokDurumu: variant.stok_durumu,
-      stok_durumu: variant.stok_durumu,
-      moq: variant.moq,
-      unitPrice: variant.priceText,
-      totalPrice: `₺${((variant.birim_fiyati || 0.87) * minMoq).toFixed(2)}`,
+      leadTime: (effectiveStok === "Var" || effectiveStok === "Stokta Var") ? "Aynı Gün / 24 Saat Kargo" : effectiveTermin,
+      stokDurumu: effectiveStok,
+      stok_durumu: effectiveStok,
+      moq: live?.moq || variant.moq,
+      unitPrice: (live?.fiyat_aliniz || numLivePrice <= 0) ? "Fiyat Alınız" : `₺${numLivePrice.toFixed(2)}`,
+      totalPrice: (live?.fiyat_aliniz || numLivePrice <= 0) ? "Fiyat Alınız" : `₺${(numLivePrice * minMoq).toFixed(2)}`,
       imageType: imgType as any,
       customDetails: [
         variant.kullanim_amaci,
@@ -303,8 +405,8 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
         `Geri Dönüşüm Oranı: ${variant.geridonusum_orani}`
       ],
       ecoScore: 70,
-      baskiDurumu: (variant.baski_durumu === "Baskısız" ? "Baskısız" : "Baskılı") as "Baskısız" | "Baskılı",
-      renkSayisi: variant.baski_durumu === "Baskısız" ? "Lütfen Renk Sayısı Seçin" : (variant.baski_renk_yon || "1 + 0 (Ön Yüz)")
+      baskiDurumu: (effectiveBaski === "Baskısız" ? "Baskısız" : "Baskılı") as "Baskısız" | "Baskılı",
+      renkSayisi: effectiveBaski === "Baskısız" ? "Lütfen Renk Sayısı Seçin" : effectiveRenk
     };
 
     setActiveSpec(newSpec);
@@ -555,10 +657,39 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
   }, [selectedDim]);
 
   // Derived state selections
-  const matchedProduct = selectedProduct;
-  const activeVariant = matchedProduct 
-    ? (matchedProduct.variants.find(varItem => varItem.olculer === selectedDim) || matchedProduct.variants[0]) 
+  const matchedProduct = selectedProduct || selectedProductGroup;
+  const normalizeDim = (str: string) => (str || "").replace(/×/g, "x").toLowerCase().replace(/\s+/g, "");
+  const activeVariantRaw = matchedProduct 
+    ? (
+        matchedProduct.variants.find(varItem => Boolean(varItem.urun_kodu) && Boolean(selectedVariantCode) && varItem.urun_kodu === selectedVariantCode) ||
+        matchedProduct.variants.find(varItem => normalizeDim(varItem.olculer) === normalizeDim(selectedDim)) ||
+        matchedProduct.variants[0]
+      ) 
     : null;
+
+  const activeVariant = useMemo(() => {
+    if (!activeVariantRaw) return null;
+    const allDbProds = (Array.isArray(dbProducts) && dbProducts.length > 0) ? dbProducts : products;
+    const live = allDbProds.find((p: any) => p.urun_kodu && activeVariantRaw.urun_kodu && p.urun_kodu.trim().toLowerCase() === activeVariantRaw.urun_kodu.trim().toLowerCase()) ||
+               allDbProds.find((p: any) => matchedProduct && p.urun_adi === matchedProduct.name && p.olculer === activeVariantRaw.olculer);
+    if (!live) return activeVariantRaw;
+
+    const livePrice = live.birim_fiyat ?? live.birim_fiyati ?? live.base_price;
+    const numPrice = typeof livePrice === "number" ? livePrice : (parseFloat(String(livePrice).replace(",", ".")) || 0);
+
+    return {
+      ...activeVariantRaw,
+      birim_fiyat: numPrice,
+      birim_fiyati: numPrice,
+      fiyat_aliniz: live.fiyat_aliniz === true || live.is_quote_only === true || numPrice <= 0,
+      satis_sekli: live.satis_sekli || live.unit || activeVariantRaw.satis_sekli,
+      stok_durumu: live.stok_durumu || activeVariantRaw.stok_durumu,
+      kalinlik_seviyesi: live.kalinlik_seviyesi || activeVariantRaw.kalinlik_seviyesi,
+      baski_durumu: live.baski_durumu || activeVariantRaw.baski_durumu,
+      baski_renk_yon: live.baski_renk_yon || activeVariantRaw.baski_renk_yon,
+      termin_suresi: live.termin_suresi || activeVariantRaw.termin_suresi
+    };
+  }, [activeVariantRaw, dbProducts, products]);
 
   const isKgBased = activeVariant 
     ? activeVariant.satis_sekli === "Kg" 
@@ -576,11 +707,16 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
     ? activeVariant.kalinlik_seviyesi 
     : (matchedProduct && matchedProduct.variants.length > 0 ? matchedProduct.variants[0].kalinlik_seviyesi : (activeSpec ? activeSpec.thickness : "80 Mikron"));
 
-  const currentStokDurumu: "Var" | "Siparişle" | "Yok" = activeVariant 
-    ? activeVariant.stok_durumu 
-    : (activeSpec ? (((activeSpec.stokDurumu || activeSpec.stok_durumu) as any) || "Siparişle") : "Siparişle");
+  const currentStokDurumu: "Var" | "Siparişle" | "Yok" | string = (() => {
+    if (selectedVariantCode === "custom" || selectedVariantCode === "custom_other" || isCustomDimension) return "Siparişle";
+    if (activeVariant?.stok_durumu) return activeVariant.stok_durumu;
+    if (activeConfiguratorVariant?.stok_durumu) return activeConfiguratorVariant.stok_durumu;
+    if (activeSpec?.stokDurumu) return activeSpec.stokDurumu;
+    if (activeSpec?.stok_durumu) return activeSpec.stok_durumu;
+    return "Siparişle";
+  })();
 
-  const currentLeadTimeStr = currentStokDurumu === "Var" 
+  const currentLeadTimeStr = (currentStokDurumu === "Var" || currentStokDurumu === "Stokta Var") 
     ? "Aynı Gün / 24 Saat Kargo" 
     : (activeVariant?.termin_suresi || activeSpec?.leadTime || "7-12 İş Günü");
 
@@ -685,45 +821,59 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
     return appliedMult;
   };
 
-  // Recalculating Formula Engine anchored to selectedVariant from live products
-  const { displayUnitPriceStr, displayTotalPriceStr, calculatedUnitPriceNum, calculatedTotalPriceNum, unitPrice, isQuoteOnly } = (() => {
-    const targetVariant = selectedVariant || (products.length > 0 ? products[0] : null);
+  const isCustomSize = selectedVariantCode === "custom" || isCustomDimension;
 
-    const unitPrice = Number(targetVariant?.birim_fiyat) || Number(targetVariant?.birim_fiyati) || 0;
-    const isQuoteOnly = targetVariant?.fiyat_aliniz === true || unitPrice === 0;
+  // Fiyat mirası: Varyasyonda özel fiyat yoksa ana ürünün birim fiyatını (örn: 400 TL) kullan
+  const rawPrice = Number(
+    activeConfiguratorVariant?.birim_fiyat ?? 
+    (activeConfiguratorVariant as any)?.birim_fiyati ??
+    (selectedProduct as any)?.birim_fiyat ??
+    (selectedProduct as any)?.birim_fiyati ??
+    (selectedProduct as any)?.price ??
+    (selectedProductGroup as any)?.birim_fiyat ?? 
+    (selectedProductGroup as any)?.birim_fiyati ?? 
+    (selectedProductGroup as any)?.price ?? 
+    (matchedProduct as any)?.birim_fiyat ??
+    (matchedProduct as any)?.birim_fiyati ??
+    (matchedProduct as any)?.price ??
+    0
+  );
 
-    if (isQuoteOnly || unitPrice === 0) {
-      return { 
-        displayUnitPriceStr: "Fiyat Alınız", 
-        displayTotalPriceStr: "Fiyat Alınız",
-        calculatedUnitPriceNum: 0,
-        calculatedTotalPriceNum: 0,
-        unitPrice: 0,
-        isQuoteOnly: true
-      };
-    }
+  // Özel ölçü seçildiyse veya panelden 'fiyat_aliniz' işaretlendiyse ya da fiyat 0 ise Teklif moduna geç
+  const isQuoteOnly = 
+    isCustomSize ||
+    activeConfiguratorVariant?.fiyat_aliniz === true ||
+    (activeConfiguratorVariant as any)?.is_quote_only === true ||
+    (selectedProduct as any)?.fiyat_aliniz === true ||
+    (selectedProduct as any)?.is_quote_only === true ||
+    (selectedProductGroup as any)?.fiyat_aliniz === true ||
+    (selectedProductGroup as any)?.is_quote_only === true ||
+    rawPrice <= 0;
 
-    const currency = targetVariant?.para_birimi || "TL";
-    const baseInTL = currency === "USD" ? unitPrice * (usdRate || 34.5) : unitPrice;
+  const currentUnit = (
+    activeConfiguratorVariant?.satis_sekli || 
+    (selectedProduct as any)?.['Satış Şekli (Adet/Kg)'] || 
+    (selectedProduct as any)?.unit || 
+    (selectedProductGroup as any)?.['Satış Şekli (Adet/Kg)'] || 
+    (selectedProductGroup as any)?.unit || 
+    'Kg'
+  ).includes('Adet') ? 'Adet' : 'Kg';
 
-    const carpanStr = targetVariant?.fiyat_carpanlari || "5k:1.00 / 10k:0.92 / 25k:0.85";
-    const tierMultiplier = getTierMultiplier(carpanStr, adjustedQty);
+  // Kademeli indirim çarpanı (varsayılan: 1.00)
+  const activeTierMultiplier = getTierMultiplier(activeConfiguratorVariant?.fiyat_carpan_sablonu, adjustedQty);
+  const discountMultiplier = activeTierMultiplier || 1.00;
+  const effectiveUnitPrice = rawPrice * discountMultiplier;
+  const quantity = adjustedQty;
+  const totalPrice = isQuoteOnly ? 0 : Math.round(effectiveUnitPrice * quantity);
 
-    const pocketAddon = (addAdhesivePocket && isKargoCategory) ? 0.35 : 0;
-    const finalUnitPrice = (baseInTL * tierMultiplier) + pocketAddon;
-    const finalTotalPrice = finalUnitPrice * adjustedQty;
-
-    const satisSekli = targetVariant?.satis_sekli || "Adet";
-
-    return {
-      displayUnitPriceStr: `₺${finalUnitPrice.toFixed(2)} / ${satisSekli}`,
-      displayTotalPriceStr: `₺${finalTotalPrice.toLocaleString('tr-TR')}`,
-      calculatedUnitPriceNum: finalUnitPrice,
-      calculatedTotalPriceNum: finalTotalPrice,
-      unitPrice,
-      isQuoteOnly: false
-    };
-  })();
+  const calculatedUnitPriceNum = isQuoteOnly ? 0 : effectiveUnitPrice;
+  const calculatedTotalPriceNum = isQuoteOnly ? 0 : totalPrice;
+  const displayUnitPriceStr = isQuoteOnly 
+    ? (isCustomSize ? "ÖZEL İMALAT - TEKLİF İSTEYİNİZ" : "Fiyat Alınız")
+    : `₺${effectiveUnitPrice.toFixed(2)} / ${currentUnit}`;
+  const displayTotalPriceStr = isQuoteOnly 
+    ? (isCustomSize ? "Ölçüye Göre Hesaplanır" : "Fiyat Alınız")
+    : `₺${totalPrice.toLocaleString('tr-TR')}`;
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
@@ -732,22 +882,48 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
   };
 
   const handleAddToQuoteBasket = () => {
+    const isOutOfStock = currentStokDurumu === "Yok" || currentStokDurumu === "Stokta Yok";
+    if (isOutOfStock) {
+      alert("Seçilen ürün stokta olmadığı için sipariş / fiyat teklifi alınamamaktadır.");
+      triggerToast("❌ Stokta olmayan ürün için teklif verilemez.");
+      return;
+    }
+
+    if (isCustomSize) {
+      if (!customEn.trim() || !customBoy.trim()) {
+        alert("Lütfen özel ölçü için en ve boy değerlerini girin");
+        triggerToast("❌ Lütfen özel ölçü için en ve boy değerlerini girin");
+        return;
+      }
+    }
+
     if (!activeSpec) return;
+
+    const baseProductName = matchedProduct?.name || selectedProduct?.name || selectedProductGroup?.name || activeSpec.name || "Ambalaj Ürünü";
+    const customOlcuStr = isCustomSize 
+      ? `${customEn} x ${customBoy}${customKoruk?.trim() ? ' + ' + customKoruk.trim() + ' cm' : ' cm'}`
+      : (activeVariant?.olculer || selectedDim);
+
+    const customNameStr = isCustomSize
+      ? `${baseProductName} - Özel Ölçü İmalat`
+      : baseProductName;
 
     const newItem: QuoteItem = {
       id: `basket-item-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      urun_kodu: activeVariant?.urun_kodu || selectedVariantCode || "KRG-2030-01",
-      urun_adi: matchedProduct?.name || activeSpec.name || "Ambalaj Ürünü",
+      urun_kodu: isCustomSize ? "OZEL-OLCU" : (activeVariant?.urun_kodu || selectedVariantCode || "KRG-2030-01"),
+      urun_adi: customNameStr,
       kategori: selectedCategoryKey,
-      olculer: activeVariant?.olculer || selectedDim,
+      olculer: customOlcuStr,
       miktar: adjustedQty,
       satis_sekli: unitLabelStr,
       baski_durumu: adjustedBaskiTercihi,
       renk_sayisi: adjustedBaskiTercihi === "Baskılı" ? adjustedRenkSayisi : "Baskısız",
-      birim_fiyat: calculatedUnitPriceNum || 0,
-      toplam_fiyat: calculatedTotalPriceNum || 0,
+      birim_fiyat: isCustomSize ? 0 : (calculatedUnitPriceNum || 0),
+      toplam_fiyat: isCustomSize ? 0 : (calculatedTotalPriceNum || 0),
+      stok_durumu: isCustomSize ? "Sipariş Üzerine Üretim" : (currentStokDurumu === "Var" || currentStokDurumu === "Stokta Var" ? "Stokta Var" : currentStokDurumu),
       logo_dosya_adi: persistentLogoName,
-      fatura_cebi_dahil: addAdhesivePocket && isKargoCategory
+      fatura_cebi_dahil: addAdhesivePocket && isKargoCategory,
+      musteri_notu: customerNote.trim() || undefined
     };
 
     setQuoteBasket(prev => [...prev, newItem]);
@@ -925,7 +1101,24 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
   // Monitor initial prompt triggers (e.g. from Catalog tab "Teklif Al" click)
   useEffect(() => {
     if (initialPrompt) {
-      if (initialPrompt.startsWith("sku:")) {
+      if (initialPrompt.startsWith("custom:")) {
+        const parts = initialPrompt.replace("custom:", "").split(":");
+        const prodId = parts[0];
+        const en = parts[1] || "";
+        const boy = parts[2] || "";
+        const koruk = parts[3] || "";
+        
+        const matchedProd = TAXONOMY_PRODUCTS.find(p => p.id === prodId || p.name.includes(prodId));
+        if (matchedProd) {
+          setSelectedCategoryKey(matchedProd.categoryKey);
+          setSelectedProductId(matchedProd.id);
+        }
+        setSelectedVariantCode("custom");
+        setIsCustomDimension(true);
+        setCustomEn(en);
+        setCustomBoy(boy);
+        setCustomKoruk(koruk !== "0" ? koruk : "");
+      } else if (initialPrompt.startsWith("sku:")) {
         const skuCode = initialPrompt.replace("sku:", "").trim();
         applySkuSelection(skuCode);
       } else {
@@ -1041,23 +1234,32 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
   };
 
   const getImageSource = (type: ImageType): string => {
+    let raw = "";
     if (IMAGES[type as keyof typeof IMAGES]) {
-      return IMAGES[type as keyof typeof IMAGES];
+      raw = IMAGES[type as keyof typeof IMAGES];
+    } else {
+      switch (type) {
+        case "kargo":
+          raw = IMAGES.kargoPlastik;
+          break;
+        case "kraft":
+          raw = IMAGES.kraftCanta;
+          break;
+        case "magaza":
+          raw = IMAGES.magazaElGecme;
+          break;
+        case "gida":
+          raw = IMAGES.doypackKilitli;
+          break;
+        case "bubble":
+          raw = IMAGES.balonluZarf;
+          break;
+        default:
+          raw = IMAGES.kargoPlastik;
+          break;
+      }
     }
-    switch (type) {
-      case "kargo":
-        return IMAGES.kargoPlastik;
-      case "kraft":
-        return IMAGES.kraftCanta;
-      case "magaza":
-        return IMAGES.magazaElGecme;
-      case "gida":
-        return IMAGES.doypackKilitli;
-      case "bubble":
-        return IMAGES.balonluZarf;
-      default:
-        return IMAGES.kargoPlastik;
-    }
+    return getImgSrc(raw);
   };
 
   const getEcoScoreColor = (score?: number): string => {
@@ -1216,6 +1418,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                       type="button"
                       onClick={() => {
                         setSelectedProductId(prod.id);
+                        setSelectedProduct(prod);
                         const v = prod.variants[0];
                         if (v) {
                           setSelectedVariantCode(v.urun_kodu);
@@ -1243,9 +1446,9 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                 <label className="text-xs font-black uppercase tracking-wider text-slate-400 font-mono">
                   3. Ürün Ölçüsü (Varyasyon)
                 </label>
-                {selectedVariant && (
+                {activeConfiguratorVariant && selectedVariantCode !== "custom" && selectedVariantCode !== "custom_other" && (
                   <span className="text-[10px] font-mono font-bold text-slate-500">
-                    Kod: {selectedVariant.urun_kodu}
+                    Kod: {activeConfiguratorVariant.urun_kodu}
                   </span>
                 )}
               </div>
@@ -1254,30 +1457,156 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                 onChange={(e) => {
                   const vCode = e.target.value;
                   setSelectedVariantCode(vCode);
-                  const v = selectedProductGroup?.variants.find(item => item.urun_kodu === vCode);
-                  if (v && selectedProductGroup) {
-                    setSelectedDim(v.olculer);
-                    updateActiveSpecForProductAndVariant(selectedProductGroup, v);
+                  if (vCode === "custom" || vCode === "custom_other") {
+                    setIsCustomDimension(true);
+                  } else {
+                    setIsCustomDimension(false);
+                    const v = selectedProductGroup?.variants.find(item => item.urun_kodu === vCode);
+                    if (v && selectedProductGroup) {
+                      setSelectedProduct(selectedProductGroup);
+                      setSelectedDim(v.olculer);
+                      updateActiveSpecForProductAndVariant(selectedProductGroup, v);
+                    }
                   }
                 }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-[#0b1c3f] cursor-pointer shadow-3xs"
+                className="w-full px-4 py-3 bg-white border-2 border-slate-300 rounded-xl text-sm font-bold text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition-all cursor-pointer"
               >
                 {availableVariants.map((v) => (
-                  <option key={v.urun_kodu} value={v.urun_kodu}>
-                    {v.olculer} ({v.kalinlik_seviyesi}) - MOQ: {v.moq}
+                  <option
+                    key={v.urun_kodu}
+                    value={v.urun_kodu}
+                    className="bg-white text-slate-900 py-2.5 px-3 text-sm font-semibold hover:bg-blue-50"
+                  >
+                    {v.olculer} ({v.kalinlik_seviyesi})
                   </option>
                 ))}
+                <option value="custom_other" className="bg-blue-50 text-blue-800 font-bold py-2.5 px-3">
+                  ⚙ Diğer (Özel Ölçü Belirtiniz...)
+                </option>
               </select>
+
+              {/* DİNAMİK ÖZEL ÖLÇÜ FORMU */}
+              {(selectedVariantCode === "custom" || selectedVariantCode === "custom_other" || isCustomDimension) && (
+                <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 space-y-3 mt-3 animate-in fade-in-50 duration-200">
+                  <div className="flex items-center space-x-2 border-b border-slate-200/80 pb-2">
+                    <span className="text-xs font-extrabold text-indigo-700">⚙ Özel İmalat Ölçü Formu</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block">En (cm) *</label>
+                      <input
+                        type="number"
+                        placeholder="Örn: 35"
+                        required
+                        value={customEn}
+                        onChange={(e) => setCustomEn(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-600"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block">Boy (cm) *</label>
+                      <input
+                        type="number"
+                        placeholder="Örn: 50"
+                        required
+                        value={customBoy}
+                        onChange={(e) => setCustomBoy(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-600"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block">Körük / Kapak (cm)</label>
+                      <input
+                        type="number"
+                        placeholder="Örn: 5"
+                        value={customKoruk}
+                        onChange={(e) => setCustomKoruk(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-600"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-mono font-bold text-slate-500 uppercase block">Mikron / Kalınlık</label>
+                      <input
+                        type="text"
+                        placeholder={activeConfiguratorVariant?.kalinlik_seviyesi || "80 Mikron"}
+                        value={customMikron}
+                        onChange={(e) => setCustomMikron(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-600"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* UYUMLU PAKET KOMBİNASYONU: Yapışkanlı Fatura Cebi (3. Ürün Ölçüsü Altında) */}
+              {showAdhesivePocketAddon && (
+                <div 
+                  onClick={() => setAddAdhesivePocket(!addAdhesivePocket)}
+                  className={`border-2 rounded-2xl p-3.5 mt-3 transition-all duration-300 select-none cursor-pointer text-xs relative overflow-hidden ${
+                    addAdhesivePocket 
+                      ? "bg-emerald-50/80 border-emerald-400 shadow-sm ring-2 ring-emerald-500/20" 
+                      : "bg-slate-50 border-slate-200/90 text-slate-700 hover:bg-slate-100/80 hover:border-slate-300"
+                  }`}
+                >
+                  <div className={`flex items-center justify-between mb-2 pb-1.5 border-b border-dashed ${
+                    addAdhesivePocket ? "border-emerald-200" : "border-slate-200/60"
+                  }`}>
+                    <span className={`text-[10px] font-black tracking-wider uppercase font-mono ${addAdhesivePocket ? "text-emerald-700" : "text-slate-400"}`}>
+                      Uyumlu Paket Kombinasyonu
+                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className={`text-[11px] font-bold ${addAdhesivePocket ? "text-emerald-900 font-extrabold" : "text-slate-600"}`}>
+                        {addAdhesivePocket ? "✓ Siparişe Eklendi" : "Siparişime Ekle"}
+                      </span>
+                      <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${
+                        addAdhesivePocket 
+                          ? "bg-emerald-600 border-emerald-600 text-white shadow-xs" 
+                          : "bg-white border-slate-300 text-transparent"
+                      }`}>
+                        <svg className="w-2.5 h-2.5 stroke-current stroke-[3.5]" fill="none" viewBox="0 0 24 24">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center space-x-3 min-w-0">
+                      <img 
+                        src={IMAGES.adhesivePockets} 
+                        alt="Yapışkanlı Fatura Cebi" 
+                        className={`w-10 h-10 rounded-xl object-cover shrink-0 border transition-colors ${
+                          addAdhesivePocket ? "border-emerald-200 bg-white" : "border-slate-200/70"
+                        }`}
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="min-w-0">
+                        <h6 className={`font-extrabold text-xs truncate ${addAdhesivePocket ? "text-emerald-950 font-black" : "text-slate-900"}`}>
+                          Yapışkanlı Fatura Cebi
+                        </h6>
+                        <p className={`text-[10px] font-medium leading-normal ${addAdhesivePocket ? "text-emerald-700" : "text-slate-400"}`}>
+                          Standart Koli & Gönderi Faturası İçin
+                        </p>
+                      </div>
+                    </div>
+                    <span className={`font-mono font-extrabold text-xs shrink-0 ${
+                      addAdhesivePocket ? "text-emerald-700 bg-emerald-100/80 px-2 py-1 rounded-lg border border-emerald-200" : "text-slate-600"
+                    }`}>
+                      +₺0.24 / Adet
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 4. SİPARİŞ MİKTARI (MoQ Locked Slider & Input) */}
             <div className="space-y-2 pt-1 border-t border-slate-100">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-black uppercase tracking-wider text-slate-400 font-mono">
-                  4. Sipariş Miktarı ({selectedVariant?.satis_sekli || "Adet"})
+                  4. Sipariş Miktarı ({activeConfiguratorVariant?.satis_sekli || "Adet"})
                 </label>
                 <span className="text-xs font-black text-indigo-600 font-mono">
-                  {adjustedQty.toLocaleString("tr-TR")} {selectedVariant?.satis_sekli || "Adet"}
+                  {adjustedQty.toLocaleString("tr-TR")} {activeConfiguratorVariant?.satis_sekli || "Adet"}
                 </span>
               </div>
               <div className="flex items-center space-x-3">
@@ -1285,7 +1614,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                   type="range"
                   min={parsedMinMoq}
                   max={isKgBased ? 5000 : 50000}
-                  step={isKgBased ? 50 : 1000}
+                  step={isKgBased ? 50 : 250}
                   value={adjustedQty}
                   onChange={(e) => setAdjustedQty(parseInt(e.target.value) || parsedMinMoq)}
                   className="flex-1 accent-[#0b1c3f] cursor-pointer h-2 bg-slate-100 rounded-lg appearance-none"
@@ -1293,7 +1622,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                 <input
                   type="number"
                   min={parsedMinMoq}
-                  step={isKgBased ? 50 : 1000}
+                  step={isKgBased ? 50 : 250}
                   value={adjustedQty}
                   onChange={(e) => {
                     const val = parseInt(e.target.value) || parsedMinMoq;
@@ -1303,8 +1632,8 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                 />
               </div>
               <div className="flex justify-between text-[9px] font-mono font-bold text-slate-400">
-                <span>Min. Sipariş (MOQ): {parsedMinMoq.toLocaleString("tr-TR")} {selectedVariant?.satis_sekli || "Adet"}</span>
-                <span>Max: {(isKgBased ? 5000 : 50000).toLocaleString("tr-TR")} {selectedVariant?.satis_sekli || "Adet"}</span>
+                <span>Min. Sipariş (MOQ): {parsedMinMoq.toLocaleString("tr-TR")} {activeConfiguratorVariant?.satis_sekli || "Adet"}</span>
+                <span>Max: {(isKgBased ? 5000 : 50000).toLocaleString("tr-TR")} {activeConfiguratorVariant?.satis_sekli || "Adet"}</span>
               </div>
             </div>
 
@@ -1315,8 +1644,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                   5. Baskı Durumu
                 </label>
                 <div className="bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-700 flex items-center justify-between">
-                  <span>{selectedVariant?.baski_durumu || "Baskılı"}</span>
-                  <span className="text-[9px] font-mono text-slate-400 uppercase">JSON Kilitli</span>
+                  <span>{baskiDurumuText}</span>
                 </div>
               </div>
 
@@ -1325,7 +1653,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                   Baskı Renk / Yön
                 </label>
                 <div className="bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-700 flex items-center justify-between">
-                  <span>{selectedVariant?.baski_renk_yon || "1 + 0 (Ön Yüz)"}</span>
+                  <span>{baskiRenkYonText}</span>
                   <span className="text-[9px] font-mono text-slate-400 uppercase">Standart</span>
                 </div>
               </div>
@@ -1370,6 +1698,31 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                 )}
               </div>
             )}
+
+            {/* ÜRÜN / SİPARİŞ NOTU (OPSİYONEL) */}
+            <div className="space-y-1.5 pt-1 border-t border-slate-100 font-sans" id="customer-note-section">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-400 font-mono block">
+                  Ürün / Sipariş Notu (Opsiyonel)
+                </label>
+                {customerNote && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomerNote("")}
+                    className="text-[10px] font-bold text-rose-500 hover:text-rose-700 transition-colors cursor-pointer"
+                  >
+                    Temizle
+                  </button>
+                )}
+              </div>
+              <textarea
+                rows={2}
+                value={customerNote}
+                onChange={(e) => setCustomerNote(e.target.value)}
+                placeholder="Örn: Özel pantone renk kodu, ambalaj koli paketleme şekli, teslimat tarihi veya ek talepleriniz..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-[#0b1c3f] transition-all resize-none shadow-3xs"
+              />
+            </div>
 
             {/* TEKLİF LİSTESİ VE ONAY BUTONU (SOL SÜTUN) */}
             <div className="space-y-3 pt-3 border-t border-slate-100 font-sans" id="left-column-basket-section">
@@ -1442,6 +1795,12 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                               </>
                             )}
                           </div>
+                          {item.musteri_notu && (
+                            <div className="text-[10px] text-amber-800 bg-amber-50/90 border border-amber-200/80 rounded-md px-2 py-0.5 mt-1 font-sans flex items-start space-x-1">
+                              <span className="font-bold shrink-0">Not:</span>
+                              <span className="italic font-medium">{item.musteri_notu}</span>
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex items-center space-x-2.5 shrink-0">
@@ -1554,12 +1913,17 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                     {adjustedQty.toLocaleString("tr-TR")} {unitLabelStr}
                   </span>
                   <span className="bg-slate-50 text-slate-700 text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-slate-200">
-                    {activeSpec.imageType === "kargo" ? "Kargo Poşeti" : (activeSpec.imageType === "kraft" ? "Kraft Çantası" : (activeSpec.imageType === "magaza" ? "Mağaza Poşeti" : "Endüstriyel Ambalaj"))}
+                    {activeCategoryName}
                   </span>
-                  {currentStokDurumu === "Var" ? (
+                  {currentStokDurumu === "Var" || currentStokDurumu === "Stokta Var" ? (
                     <span className="bg-emerald-50 text-emerald-700 text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-emerald-200 flex items-center space-x-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                       <span>Stokta Var</span>
+                    </span>
+                  ) : currentStokDurumu === "Yok" || currentStokDurumu === "Stokta Yok" ? (
+                    <span className="bg-rose-50 text-rose-700 text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-rose-200 flex items-center space-x-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                      <span>Stokta Yok</span>
                     </span>
                   ) : (
                     <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-blue-200 flex items-center space-x-1">
@@ -1595,6 +1959,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                       alt="ambalaj blueprint"
                       className="w-full h-full object-contain bg-slate-900/50 filter drop-shadow-[0_4px_12px_rgba(255,255,255,0.05)] transform hover:scale-105 duration-500"
                       referrerPolicy="no-referrer"
+                      onError={handleImageError}
                     />
 
                     {/* Absolute positioned Overlay Logo Layer (Conditionally rendered) */}
@@ -1647,17 +2012,46 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                 </div>
 
                 {/* Live pricing tray block */}
-                <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100 font-sans">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider leading-none mb-1">
-                      {isKgBased ? "Kg Birim Fiyat" : (unitLabelStr === "Rulo" ? "Rulo Birim Fiyat" : "Adet Birim Fiyat")}
-                    </span>
-                    <span className="text-xl font-black text-emerald-600 font-mono tracking-tight">{displayUnitPriceStr}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider leading-none mb-1">Tahmini Toplam Tutar</span>
-                    <span className="text-xl font-black text-[#0b1c3f] font-mono tracking-tight">{displayTotalPriceStr}</span>
-                  </div>
+                <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-5 my-5">
+                  {isQuoteOnly ? (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div>
+                        <span className="text-[11px] font-bold tracking-wider text-slate-500 uppercase block mb-1">
+                          FİYATLANDIRMA DURUMU
+                        </span>
+                        <span className="text-xl sm:text-2xl font-black text-blue-600 tracking-tight">
+                          {selectedVariantCode === "custom" ? "ÖZEL İMALAT - TEKLİF İSTEYİNİZ" : "ÖZEL TEKLİF ALINIZ"}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[11px] font-bold tracking-wider text-slate-500 uppercase block mb-1">
+                          TAHMİNİ TOPLAM
+                        </span>
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                          {selectedVariantCode === "custom" ? "Ölçüye Göre Hesaplanır" : "Miktara Göre Özel Canlı Fiyat"}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4 items-center">
+                      <div>
+                        <span className="text-[11px] font-bold tracking-wider text-slate-500 uppercase block mb-1">
+                          {currentUnit.toUpperCase()} BİRİM FİYAT
+                        </span>
+                        <div className="text-xl sm:text-2xl font-black text-emerald-600">
+                          ₺{effectiveUnitPrice.toFixed(2)} <span className="text-sm font-semibold text-slate-500">/ {currentUnit}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[11px] font-bold tracking-wider text-slate-500 uppercase block mb-1">
+                          TAHMİNİ TOPLAM TUTAR
+                        </span>
+                        <div className="text-xl sm:text-2xl font-black text-slate-900">
+                          ₺{totalPrice.toLocaleString('tr-TR')}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Salt Okunur Şartname & Teknik Özellikler */}
@@ -1674,7 +2068,12 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                     </div>
                     <div className="py-2 flex justify-between items-center">
                       <span className="text-slate-400 font-medium">Seçilen Ölçü (Varyasyon):</span>
-                      <span className="font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{activeVariant?.olculer || selectedDim}</span>
+                      <span className="font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                        {isCustomSize 
+                          ? `Özel Ölçü: ${customEn || '0'}x${customBoy || '0'}${customKoruk?.trim() ? ' + ' + customKoruk.trim() + ' cm' : ' cm'}`
+                          : (activeVariant?.olculer || selectedDim)
+                        }
+                      </span>
                     </div>
                     <div className="py-2 flex justify-between items-center">
                       <span className="text-slate-400 font-medium">Sipariş Miktarı:</span>
@@ -1720,10 +2119,28 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                     )}
                     <div className="py-2 flex justify-between items-center">
                       <span className="text-slate-400 font-medium">Stok Durumu:</span>
-                      <span className={`font-extrabold ${currentStokDurumu === "Var" ? "text-emerald-600" : "text-blue-600"}`}>
-                        {currentStokDurumu === "Var" ? "Stokta Var" : "Sipariş Üzerine Üretim"}
+                      <span className={`font-extrabold ${
+                        currentStokDurumu === "Var" || currentStokDurumu === "Stokta Var"
+                          ? "text-emerald-600"
+                          : currentStokDurumu === "Yok" || currentStokDurumu === "Stokta Yok"
+                            ? "text-rose-600"
+                            : "text-blue-600"
+                      }`}>
+                        {currentStokDurumu === "Var" || currentStokDurumu === "Stokta Var"
+                          ? "Stokta Var"
+                          : currentStokDurumu === "Yok" || currentStokDurumu === "Stokta Yok"
+                            ? "Stokta Yok"
+                            : "Sipariş Üzerine Üretim"}
                       </span>
                     </div>
+                    {customerNote.trim() && (
+                      <div className="py-2 flex justify-between items-start gap-2 border-t border-slate-200/60 pt-2">
+                        <span className="text-slate-400 font-medium shrink-0">Sipariş Notu:</span>
+                        <span className="font-extrabold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-right text-[11px] italic max-w-[200px] break-words">
+                          {customerNote}
+                        </span>
+                      </div>
+                    )}
 
                   </div>
                 </div>
@@ -1761,70 +2178,30 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                   </div>
                 </div>
 
-                {/* Side Item: Adhesive shipping envelopes (Conditional & Up-sell) - Placed above Action Button */}
-                {showAdhesivePocketAddon ? (
-                  <div 
-                    onClick={() => setAddAdhesivePocket(!addAdhesivePocket)}
-                    className={`border rounded-2xl p-3 px-3.5 transition-all duration-300 select-none cursor-pointer text-xs relative overflow-hidden ${
-                      addAdhesivePocket 
-                        ? "bg-slate-900 border-slate-900 text-white shadow-md shadow-slate-900/10" 
-                        : "bg-slate-50 border-slate-200 text-slate-700 opacity-60 hover:opacity-100"
-                    }`}
-                  >
-                    {/* Top Action Row Containing Checkbox Toggle and Label */}
-                    <div className="flex items-center justify-between mb-2 pb-1 border-b border-dashed border-slate-200/50">
-                      <span className={`text-[9px] font-black tracking-wider uppercase font-mono ${addAdhesivePocket ? "text-emerald-400" : "text-slate-400"}`}>
-                        Uyumlu Paket Kombinasyonu
-                      </span>
-                      <div className="flex items-center space-x-1.5">
-                        <span className="text-[10px] font-bold">Siparişime Ekle</span>
-                        <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${
-                          addAdhesivePocket 
-                            ? "bg-emerald-500 border-emerald-500 text-white" 
-                            : "bg-white border-slate-300 text-transparent"
-                        }`}>
-                          <svg className="w-2.5 h-2.5 stroke-current stroke-[3.5]" fill="none" viewBox="0 0 24 24">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center space-x-3">
-                        <img 
-                          src={IMAGES.adhesivePockets} 
-                          alt="fatura cebi" 
-                          className="w-10 h-10 rounded-xl object-cover shrink-0"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div>
-                          <h6 className={`font-bold text-[11px] ${addAdhesivePocket ? "text-white" : "text-slate-800"}`}>
-                            Yapışkanlı Fatura Cebi
-                          </h6>
-                          <p className={`text-[9px] font-medium leading-normal ${addAdhesivePocket ? "text-slate-300" : "text-slate-400"}`}>
-                            Standart Koli & Gönderi Faturası İçin
-                          </p>
-                        </div>
-                      </div>
-                      <span className={`font-mono font-extrabold shrink-0 ${addAdhesivePocket ? "text-emerald-300" : "text-slate-500"}`}>
-                        +₺0.24 / Adet
-                      </span>
-                    </div>
-                  </div>
-                ) : null}
-
                 {/* SAĞ PANEL AKSİYON BUTONU (Tek Buton) */}
                 <div className="pt-2 font-sans" id="right-column-action-button">
                   <button
                     type="button"
+                    disabled={currentStokDurumu === "Yok" || currentStokDurumu === "Stokta Yok"}
                     onClick={handleAddToQuoteBasket}
-                    style={{ backgroundColor: "#059669" }}
-                    className="w-full text-white font-extrabold text-xs py-3.5 px-4 rounded-2xl flex items-center justify-center space-x-2 transition-all duration-200 shadow-md hover:shadow-lg hover:bg-emerald-700 active:scale-95 cursor-pointer"
+                    style={{ backgroundColor: (currentStokDurumu === "Yok" || currentStokDurumu === "Stokta Yok") ? "#64748b" : (isQuoteOnly ? "#2563eb" : "#059669") }}
+                    className={`w-full text-white font-extrabold text-xs py-3.5 px-4 rounded-2xl flex items-center justify-center space-x-2 transition-all duration-200 shadow-md ${
+                      (currentStokDurumu === "Yok" || currentStokDurumu === "Stokta Yok")
+                        ? "opacity-75 cursor-not-allowed"
+                        : isQuoteOnly ? "hover:bg-blue-700 hover:shadow-lg active:scale-95 cursor-pointer" : "hover:bg-emerald-700 hover:shadow-lg active:scale-95 cursor-pointer"
+                    }`}
                     id="add-to-quote-basket-btn"
                   >
-                    <Plus className="w-4 h-4 text-white shrink-0" />
-                    <span>+ Bu Ürünü Teklife Ekle</span>
+                    {(currentStokDurumu === "Yok" || currentStokDurumu === "Stokta Yok") ? (
+                      <span>Stokta Yok - Sipariş Alınamaz</span>
+                    ) : isQuoteOnly ? (
+                      <span>Fiyat Teklifi İsteyin ➔</span>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4 text-white shrink-0" />
+                        <span>+ Bu Ürünü Teklife Ekle</span>
+                      </>
+                    )}
                   </button>
                 </div>
 
@@ -1952,6 +2329,12 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                                   </>
                                 )}
                               </div>
+                              {item.musteri_notu && (
+                                <div className="text-[10px] text-amber-800 bg-amber-50/90 border border-amber-200/80 rounded-md px-2 py-0.5 mt-0.5 font-sans flex items-start space-x-1">
+                                  <span className="font-bold shrink-0">Not:</span>
+                                  <span className="italic font-medium">{item.musteri_notu}</span>
+                                </div>
+                              )}
                             </div>
                           ))
                         )}

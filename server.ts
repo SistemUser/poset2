@@ -1,8 +1,10 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 import express from "express";
 import path from "path";
 import fs from "fs";
 import tls from "tls";
 import dotenv from "dotenv";
+
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import { safeWriteJson, safeReadJson } from "./src/lib/fileHelper";
@@ -13,6 +15,11 @@ const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 
 app.use(express.json());
+
+// Top-level static asset serving for public directory and images
+app.use(express.static(path.join(process.cwd(), 'public')));
+app.use(express.static('public'));
+app.use('/images', express.static(path.join(process.cwd(), 'public', 'images')));
 
 // Lazy-initialization of Gemini client for robust recovery
 let aiClient: GoogleGenAI | null = null;
@@ -2498,19 +2505,19 @@ async function fetchAndSaveLiveCurrency(customApiKey?: string): Promise<{ succes
   };
 }
 
-// Automatic 15-Minute Currency Refresh Timer (Max 95 requests per 24 hours)
+// Automatic 30-Minute Currency Refresh Timer (Max 95 requests per 24 hours)
 setInterval(async () => {
   try {
     const settings = await getSettingsData();
     // Auto sync when rate_mode is api or default
     if (settings.rate_mode !== "manual") {
-      console.log("[CollectAPI Auto-Sync] 15 dakikalık periyodik kur güncellemesi tetiklendi...");
+      console.log("[CollectAPI Auto-Sync] 30 dakikalık periyodik kur güncellemesi tetiklendi...");
       await fetchAndSaveLiveCurrency();
     }
   } catch (err) {
     console.error("Auto currency refresh error:", err);
   }
-}, 15 * 60 * 1000);
+}, 30 * 60 * 1000);
 
 // Run initial currency check 10 seconds after server startup
 setTimeout(() => {
@@ -3177,14 +3184,356 @@ th { background-color: #0b1c3f; color: white; }
   }
 });
 
+// --- ARTICLE MANAGEMENT (AMBALAJ REHBERİ) ENDPOINTS ---
+function slugifyArticleTitle(text: string): string {
+  const trMap: Record<string, string> = {
+    'ç': 'c', 'Ç': 'c', 'ğ': 'g', 'Ğ': 'g', 'ı': 'i', 'I': 'i', 'İ': 'i',
+    'ö': 'o', 'Ö': 'o', 'ş': 's', 'Ş': 's', 'ü': 'u', 'Ü': 'u'
+  };
+  return text
+    .split('')
+    .map(c => trMap[c] || c)
+    .join('')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9 -]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+async function getArticlesList(): Promise<any[]> {
+  const articlesFilePath = path.join(process.cwd(), 'data', 'articles.json');
+  return await safeReadJson<any[]>(articlesFilePath, []);
+}
+
+app.get(["/api/articles", "/api/admin/articles"], async (req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  const articles = await getArticlesList();
+  return res.json(articles);
+});
+
+
+app.get("/api/articles/:slug", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  const articles = await getArticlesList();
+  const slugParam = req.params.slug;
+  const found = articles.find((a: any) => a.slug === slugParam || a.id === slugParam);
+  if (!found) {
+    return res.status(404).json({ error: "Makale bulunamadı" });
+  }
+  return res.json(found);
+});
+
+app.post("/api/admin/articles", async (req, res) => {
+  const articlesFilePath = path.join(process.cwd(), 'data', 'articles.json');
+  const articles = await getArticlesList();
+
+  const { baslik, alt_baslik, ozet, icerik, kategori, related_product, gorsel_url, sss, okuma_suresi, slug, tarih, seo, geo_ai } = req.body || {};
+
+  if (!baslik || !baslik.trim()) {
+    return res.status(400).json({ success: false, error: "Makale başlığı zorunludur." });
+  }
+
+  const generatedSlug = (slug && slug.trim()) ? slugifyArticleTitle(slug) : slugifyArticleTitle(baslik);
+  const wordCount = (icerik || "").trim().split(/\s+/).length;
+  const calcReadingTime = okuma_suresi || `${Math.max(1, Math.ceil(wordCount / 200))} dk`;
+  const articleDate = tarih || new Date().toISOString().split('T')[0];
+
+  const formattedSss = Array.isArray(sss) 
+    ? sss.filter((item: any) => item && (item.soru?.trim() || item.cevap?.trim()))
+    : [];
+
+  const newArticle = {
+    id: `rehber-${Date.now().toString().slice(-6)}`,
+    slug: generatedSlug,
+    kategori: kategori || "E-TİCARET VE KARGO AMBALAJLARI",
+    baslik: baslik.trim(),
+    alt_baslik: (alt_baslik || "").trim(),
+    ozet: (ozet || "").trim(),
+    icerik: (icerik || "").trim(),
+    okuma_suresi: calcReadingTime,
+    tarih: articleDate,
+    related_product: (related_product || "").trim(),
+    gorsel_url: (gorsel_url || "").trim(),
+    sss: formattedSss,
+    seo: seo || undefined,
+    geo_ai: geo_ai || undefined
+  };
+
+  articles.unshift(newArticle);
+  await safeWriteJson(articlesFilePath, articles);
+  return res.json({ success: true, article: newArticle, articles });
+});
+
+app.put(["/api/admin/articles/:id", "/api/admin/articles"], async (req, res) => {
+  const articlesFilePath = path.join(process.cwd(), 'data', 'articles.json');
+  let articles = await getArticlesList();
+
+  const targetId = req.params.id || req.body?.id;
+  const index = articles.findIndex((a: any) => a.id === targetId || a.slug === targetId);
+
+  if (index === -1) {
+    return res.status(404).json({ success: false, error: "Güncellenecek makale bulunamadı." });
+  }
+
+  const existing = articles[index];
+  const { baslik, alt_baslik, ozet, icerik, kategori, related_product, gorsel_url, sss, okuma_suresi, slug, tarih, seo, geo_ai } = req.body || {};
+
+  const updatedTitle = (baslik !== undefined ? baslik : existing.baslik).trim();
+  const updatedContent = (icerik !== undefined ? icerik : existing.icerik).trim();
+  const wordCount = updatedContent.split(/\s+/).length;
+  const calcReadingTime = okuma_suresi || `${Math.max(1, Math.ceil(wordCount / 200))} dk`;
+
+  const formattedSss = sss !== undefined
+    ? (Array.isArray(sss) ? sss.filter((item: any) => item && (item.soru?.trim() || item.cevap?.trim())) : [])
+    : existing.sss;
+
+  const updatedArticle = {
+    ...existing,
+    baslik: updatedTitle,
+    alt_baslik: alt_baslik !== undefined ? alt_baslik.trim() : existing.alt_baslik,
+    ozet: ozet !== undefined ? ozet.trim() : existing.ozet,
+    icerik: updatedContent,
+    kategori: kategori || existing.kategori,
+    related_product: related_product !== undefined ? related_product.trim() : existing.related_product,
+    gorsel_url: gorsel_url !== undefined ? gorsel_url.trim() : existing.gorsel_url,
+    sss: formattedSss,
+    okuma_suresi: calcReadingTime,
+    slug: slug ? slugifyArticleTitle(slug) : existing.slug,
+    tarih: tarih || existing.tarih,
+    seo: seo !== undefined ? seo : existing.seo,
+    geo_ai: geo_ai !== undefined ? geo_ai : existing.geo_ai
+  };
+
+  articles[index] = updatedArticle;
+  await safeWriteJson(articlesFilePath, articles);
+  return res.json({ success: true, article: updatedArticle, articles });
+});
+
+app.delete("/api/admin/articles/:id", async (req, res) => {
+  const articlesFilePath = path.join(process.cwd(), 'data', 'articles.json');
+  let articles = await getArticlesList();
+
+  const targetId = req.params.id;
+  const initialLength = articles.length;
+  articles = articles.filter((a: any) => a.id !== targetId && a.slug !== targetId);
+
+  if (articles.length === initialLength) {
+    return res.status(404).json({ success: false, error: "Silinecek makale bulunamadı." });
+  }
+
+  await safeWriteJson(articlesFilePath, articles);
+  return res.json({ success: true, articles });
+});
+
+function escapeHtml(str: string): string {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function getTemplateHtml(): string {
+  const distIndex = path.join(process.cwd(), 'dist', 'index.html');
+  const rootIndex = path.join(process.cwd(), 'index.html');
+  const publicIndex = path.join(process.cwd(), 'public', 'index.html');
+
+  if (fs.existsSync(distIndex)) {
+    return fs.readFileSync(distIndex, 'utf8');
+  } else if (fs.existsSync(rootIndex)) {
+    return fs.readFileSync(rootIndex, 'utf8');
+  } else if (fs.existsSync(publicIndex)) {
+    return fs.readFileSync(publicIndex, 'utf8');
+  }
+  return `<!doctype html><html lang="tr"><head><!-- SEO_TITLE --><title>Ambalaj Market San. Tic. Ltd. Şti.</title><!-- /SEO_TITLE --><!-- SEO_META --><meta name="description" content="Ambalaj Market" /><!-- /SEO_META --><!-- SEO_EXTRA --><!-- /SEO_EXTRA --></head><body><div id="root"></div></body></html>`;
+}
+
+function injectSeoIntoHtml(rawHtml: string, article: any): string {
+  if (!article) return rawHtml;
+
+  const rawTitle = article.seo?.meta_title || article.baslik || article.title;
+  const metaTitle = `${rawTitle} | Poset.com`;
+  const desc = article.seo?.meta_description || article.ozet || article.summary || article.alt_baslik || '';
+  const slug = article.slug || article.id;
+  const articleUrl = `https://poset.com/rehber/${slug}`;
+  const imageUrl = article.gorsel_url && !article.gorsel_url.includes('posetlogo')
+    ? article.gorsel_url
+    : "https://www.poset.com/templates/untitled/images/designer/28d090dc364360f397250cc88c7b8290_posetlogo3.png";
+  const keywords = Array.isArray(article.seo?.keywords) ? article.seo.keywords.join(', ') : (article.kategori || '');
+
+  const titleTag = `<title>${escapeHtml(metaTitle)}</title>`;
+  const metaTag = `<meta name="description" content="${escapeHtml(desc)}" />`;
+
+  const formattedSss = Array.isArray(article.sss) ? article.sss.filter((s: any) => s && (s.soru || s.cevap)) : [];
+
+  const techArticleSchema = {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": rawTitle,
+    "description": desc,
+    "articleBody": (article.icerik || '').slice(0, 300) + '...',
+    "image": [imageUrl],
+    "datePublished": article.tarih || "2026-09-20",
+    "dateModified": article.tarih || "2026-09-20",
+    "keywords": keywords,
+    "author": {
+      "@type": "Organization",
+      "name": "Poset.com Ambalaj Uzmanları",
+      "url": "https://poset.com"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "Ambalaj Market San. Tic. Ltd. Şti.",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://www.poset.com/templates/untitled/images/designer/28d090dc364360f397250cc88c7b8290_posetlogo3.png"
+      }
+    }
+  };
+
+  const faqSchema = formattedSss.length > 0 ? {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": formattedSss.map((s: any) => ({
+      "@type": "Question",
+      "name": s.soru,
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": s.cevap
+      }
+    }))
+  } : null;
+
+  const extraTags = `
+    <meta property="og:title" content="${escapeHtml(rawTitle)}" />
+    <meta property="og:description" content="${escapeHtml(desc)}" />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="${articleUrl}" />
+    <meta property="og:image" content="${imageUrl}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapeHtml(rawTitle)}" />
+    <meta name="twitter:description" content="${escapeHtml(desc)}" />
+    <meta name="twitter:image" content="${imageUrl}" />
+    <link rel="canonical" href="${articleUrl}" />
+    <script type="application/ld+json">
+${JSON.stringify(techArticleSchema, null, 2)}
+    </script>
+${faqSchema ? `    <script type="application/ld+json">\n${JSON.stringify(faqSchema, null, 2)}\n    </script>` : ''}
+  `;
+
+  let html = rawHtml;
+
+  // Replace title placeholder or tag
+  if (html.includes('<!-- SEO_TITLE -->') && html.includes('<!-- /SEO_TITLE -->')) {
+    html = html.replace(/<!-- SEO_TITLE -->[\s\S]*?<!-- \/SEO_TITLE -->/, `<!-- SEO_TITLE -->\n    ${titleTag}\n    <!-- /SEO_TITLE -->`);
+  } else {
+    html = html.replace(/<title>[\s\S]*?<\/title>/i, titleTag);
+  }
+
+  // Replace meta placeholder or tag
+  if (html.includes('<!-- SEO_META -->') && html.includes('<!-- /SEO_META -->')) {
+    html = html.replace(/<!-- SEO_META -->[\s\S]*?<!-- \/SEO_META -->/, `<!-- SEO_META -->\n    ${metaTag}\n    <!-- /SEO_META -->`);
+  } else {
+    html = html.replace(/<meta\s+name="description"\s+content="[\s\S]*?"\s*\/?>/i, metaTag);
+  }
+
+  // Replace extra placeholder or append before </head>
+  if (html.includes('<!-- SEO_EXTRA -->') && html.includes('<!-- /SEO_EXTRA -->')) {
+    html = html.replace(/<!-- SEO_EXTRA -->[\s\S]*?<!-- \/SEO_EXTRA -->/, `<!-- SEO_EXTRA -->\n${extraTags}\n    <!-- /SEO_EXTRA -->`);
+  } else {
+    html = html.replace('</head>', `${extraTags}\n</head>`);
+  }
+
+  return html;
+}
+
 // Vite server configuration helper
 async function startServer() {
+  let viteServer: any = null;
+
+  // SSR-Lite Meta Injection middleware for article pages
+  app.use(async (req, res, next) => {
+    // Skip static assets and API routes
+    if (req.path.startsWith('/api') || req.path.startsWith('/assets') || req.path.startsWith('/@') || (req.path.includes('.') && !req.path.endsWith('.html'))) {
+      return next();
+    }
+
+    // Skip admin/management routes
+    if (['/yonetim', '/admin'].includes(req.path)) {
+      return next();
+    }
+
+    try {
+      let targetSlug = req.query.makale || req.query.slug || req.query.article || req.query.id || req.query.rehber;
+
+      if (!targetSlug && req.path) {
+        const cleanPath = req.path.replace(/^\/+|\/+$/g, '');
+        const segments = cleanPath.split('/');
+        const lastSegment = segments[segments.length - 1];
+        if (lastSegment && lastSegment !== 'rehber' && lastSegment !== 'guide') {
+          targetSlug = lastSegment.replace(/\.html$/i, '');
+        }
+      }
+
+      if (targetSlug && typeof targetSlug === 'string') {
+        const slugKey = targetSlug.trim().toLowerCase();
+        const articles = await getArticlesList();
+        const article = articles.find((a: any) => 
+          (a.slug && a.slug.toLowerCase() === slugKey) || 
+          (a.id && a.id.toLowerCase() === slugKey)
+        );
+
+        if (article) {
+          let rawHtml = getTemplateHtml();
+          let seoHtml = injectSeoIntoHtml(rawHtml, article);
+
+          if (viteServer) {
+            seoHtml = await viteServer.transformIndexHtml(req.originalUrl || req.url, seoHtml);
+          }
+
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          return res.send(seoHtml);
+        }
+      }
+    } catch (err) {
+      console.error("Error in SSR Meta Injection middleware:", err);
+    }
+
+    next();
+  });
+
+
+
+  app.get("*.html", (req, res, next) => {
+    if (req.path.endsWith(".html")) {
+      return res.redirect(301, "/");
+    }
+    next();
+  });
+
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
+    viteServer = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
-    app.use(vite.middlewares);
+    app.use(viteServer.middlewares);
+    app.get('*', async (req, res, next) => {
+      try {
+        const url = req.originalUrl || req.url;
+        const indexPath = path.resolve(process.cwd(), 'index.html');
+        if (fs.existsSync(indexPath)) {
+          let template = fs.readFileSync(indexPath, 'utf-8');
+          template = await viteServer.transformIndexHtml(url, template);
+          return res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).end(template);
+        }
+      } catch (e) {
+        if (viteServer) viteServer.ssrFixStacktrace(e as Error);
+        return next(e);
+      }
+      next();
+    });
     console.log("Vite development middleware integrated successfully.");
   } else {
     const distPath = path.join(process.cwd(), 'dist');
@@ -3194,6 +3543,7 @@ async function startServer() {
     });
     console.log("Serving compiled production assets from ./dist");
   }
+
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Poset Industrial full-stack server running on port ${PORT}`);
