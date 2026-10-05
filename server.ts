@@ -2591,12 +2591,30 @@ app.get(["/api/admin/products", "/api/products"], async (_req, res) => {
   }
 });
 
-app.post("/api/admin/products", async (req, res) => {
+app.post(["/api/admin/products", "/api/products"], async (req, res) => {
   try {
     const productsFilePath = path.resolve(process.cwd(), 'data/products.json');
     const fileData = await fs.promises.readFile(productsFilePath, 'utf-8');
     const products: any[] = JSON.parse(fileData);
     const newProd = req.body || {};
+
+    // Support HTTP method override or explicit action=delete
+    if (newProd._method === "DELETE" || newProd.action === "delete" || newProd.action === "delete_product") {
+      const rawTarget = newProd.urun_kodu || newProd.sku || newProd.id || newProd.sira_no;
+      const target = decodeURIComponent(String(rawTarget || "")).trim().toLowerCase();
+      const filtered = products.filter((p: any) => {
+        const pCode = String(p.urun_kodu || p.sku || p.id || "").trim().toLowerCase();
+        const pSira = String(p.sira_no || "").trim().toLowerCase();
+        return pCode !== target && pSira !== target;
+      });
+
+      if (filtered.length === products.length) {
+        return res.status(404).json({ success: false, message: "Silinecek ürün bulunamadı: " + target, products });
+      }
+
+      await safeWriteJson(productsFilePath, filtered);
+      return res.json({ success: true, deleted_sku: target, count: filtered.length, products: filtered });
+    }
 
     // Auto-generate sira_no
     const maxSiraNo = products.reduce((max: number, p: any) => Math.max(max, Number(p.sira_no) || 0), 0);
@@ -2702,21 +2720,35 @@ app.put([
   }
 });
 
-app.delete(["/api/admin/products/:urun_kodu", "/api/admin/products/by-sira/:sira_no"], async (req, res) => {
+app.delete([
+  "/api/admin/products/:urun_kodu", 
+  "/api/admin/products/by-sira/:sira_no",
+  "/api/admin/products",
+  "/api/products/:urun_kodu",
+  "/api/products/by-sira/:sira_no",
+  "/api/products"
+], async (req, res) => {
   try {
-    const code = req.params.urun_kodu || req.params.sira_no;
+    const rawTarget = req.params.urun_kodu || req.params.sira_no || req.query.sku || req.query.urun_kodu || req.query.sira_no || req.body?.urun_kodu || req.body?.sku || req.body?.sira_no;
+    const target = decodeURIComponent(String(rawTarget || "")).trim().toLowerCase();
+
+    if (!target) {
+      return res.status(400).json({ success: false, message: "Silinecek ürün kodu veya sıra no belirtilmedi." });
+    }
+
     const products = await getProductsData();
-    const filtered = products.filter((p: any) => 
-      String(p.urun_kodu).toLowerCase() !== String(code).toLowerCase() && 
-      String(p.sira_no) !== String(code)
-    );
+    const filtered = products.filter((p: any) => {
+      const pCode = String(p.urun_kodu || p.sku || p.id || "").trim().toLowerCase();
+      const pSira = String(p.sira_no || "").trim().toLowerCase();
+      return pCode !== target && pSira !== target;
+    });
 
     if (filtered.length === products.length) {
-      return res.status(404).json({ success: false, message: "Silinecek ürün bulunamadı." });
+      return res.status(404).json({ success: false, message: "Silinecek ürün bulunamadı: " + target, products });
     }
 
     await saveProductsData(filtered);
-    return res.json({ success: true, urun_kodu: code });
+    return res.json({ success: true, deleted_sku: target, count: filtered.length, products: filtered });
   } catch (err: any) {
     console.error("DELETE product error:", err);
     return res.status(500).json({ success: false, message: err?.message || "Ürün silinirken hata oluştu." });

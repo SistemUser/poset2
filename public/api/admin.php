@@ -306,24 +306,31 @@ if ($method === 'POST') {
         $method = strtoupper((string)$input['_method']);
     } elseif (isset($_GET['_method'])) {
         $method = strtoupper((string)$_GET['_method']);
+    } elseif (isset($input['action']) && in_array(strtolower((string)$input['action']), ['delete', 'delete_product'])) {
+        $method = 'DELETE';
     }
 }
 
 $action = isset($_GET['action']) ? (string)$_GET['action'] : (isset($_GET['route']) ? (string)$_GET['route'] : '');
+if ($action === 'delete_product') {
+    $action = 'products';
+    $method = 'DELETE';
+}
 if (empty($action)) {
-    $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
-    if (str_contains($requestUri, '/refresh-rate')) {
-        $action = 'refresh-rate';
-    } elseif (str_contains($requestUri, '/settings')) {
-        $action = 'settings';
-    } elseif (str_contains($requestUri, '/products')) {
-        $action = 'products';
-    } elseif (str_contains($requestUri, '/categories')) {
-        $action = 'categories';
-    } elseif (str_contains($requestUri, '/articles')) {
-        $action = 'articles';
-    } elseif (str_contains($requestUri, '/multiplier-templates')) {
-        $action = 'multiplier-templates';
+    $uris = [
+        $_SERVER['REQUEST_URI'] ?? '',
+        $_SERVER['REDIRECT_URL'] ?? '',
+        $_SERVER['PATH_INFO'] ?? '',
+        $_SERVER['PHP_SELF'] ?? ''
+    ];
+    foreach ($uris as $u) {
+        $path = parse_url($u, PHP_URL_PATH) ?? '';
+        if (str_contains($path, '/refresh-rate')) { $action = 'refresh-rate'; break; }
+        if (str_contains($path, '/settings')) { $action = 'settings'; break; }
+        if (str_contains($path, '/products')) { $action = 'products'; break; }
+        if (str_contains($path, '/categories')) { $action = 'categories'; break; }
+        if (str_contains($path, '/articles')) { $action = 'articles'; break; }
+        if (str_contains($path, '/multiplier-templates')) { $action = 'multiplier-templates'; break; }
     }
 }
 
@@ -444,20 +451,40 @@ if ($action === 'products') {
         }
     } elseif ($method === 'DELETE') {
         $products = getDbData($productsFile, []);
-        $targetSku = trim((string)($_GET['sku'] ?? ($input['urun_kodu'] ?? ($input['sku'] ?? ($input['id'] ?? '')))));
-        if (empty($targetSku)) {
-            $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
-            if (preg_match('#/products/([^/?]+)#', $requestUri, $matches)) {
-                $targetSku = urldecode($matches[1]);
+        $targetSku = trim(urldecode((string)($_GET['sku'] ?? ($_GET['urun_kodu'] ?? ($input['urun_kodu'] ?? ($input['sku'] ?? ($input['id'] ?? ($_GET['id'] ?? ''))))))));
+        $targetSira = trim((string)($_GET['sira_no'] ?? ($input['sira_no'] ?? '')));
+
+        if (empty($targetSku) && empty($targetSira)) {
+            $uris = array_filter([
+                $_SERVER['REQUEST_URI'] ?? '',
+                $_SERVER['REDIRECT_URL'] ?? '',
+                $_SERVER['PATH_INFO'] ?? '',
+                $_SERVER['PHP_SELF'] ?? ''
+            ]);
+            foreach ($uris as $u) {
+                $path = parse_url($u, PHP_URL_PATH) ?? '';
+                if (preg_match('#/products/by-sira/([^/?]+)#i', $path, $m)) {
+                    $targetSira = trim(urldecode($m[1]));
+                    break;
+                } elseif (preg_match('#/products/([^/?]+)#i', $path, $m)) {
+                    $targetSku = trim(urldecode($m[1]));
+                    break;
+                }
             }
         }
         $targetSku = trim($targetSku);
+        $targetSira = trim($targetSira);
 
         $newProducts = [];
         $deleted = false;
         foreach ($products as $p) {
-            $pCode = (string)($p['urun_kodu'] ?? ($p['sku'] ?? ($p['id'] ?? '')));
-            if (!empty($targetSku) && strcasecmp(trim($pCode), $targetSku) === 0) {
+            $pCode = trim((string)($p['urun_kodu'] ?? ($p['sku'] ?? ($p['id'] ?? ''))));
+            $pSira = trim((string)($p['sira_no'] ?? ''));
+
+            $matchCode = (!empty($targetSku) && strcasecmp($pCode, $targetSku) === 0);
+            $matchSira = (!empty($targetSira) && $pSira === $targetSira);
+
+            if ($matchCode || $matchSira) {
                 $deleted = true;
                 continue;
             }
@@ -466,11 +493,21 @@ if ($action === 'products') {
 
         if ($deleted) {
             saveDbData($productsFile, $newProducts);
-            echo json_encode(['success' => true, 'deleted_sku' => $targetSku, 'products' => $newProducts], JSON_UNESCAPED_UNICODE);
+            echo json_encode([
+                'success' => true, 
+                'deleted_sku' => $targetSku ?: $targetSira, 
+                'count' => count($newProducts),
+                'products' => $newProducts,
+                'message' => 'Ürün veritabanından başarıyla silindi.'
+            ], JSON_UNESCAPED_UNICODE);
             exit;
         } else {
             http_response_code(404);
-            echo json_encode(['success' => false, 'error' => 'Ürün bulunamadı: ' . $targetSku], JSON_UNESCAPED_UNICODE);
+            echo json_encode([
+                'success' => false, 
+                'error' => 'Silinecek ürün veritabanında bulunamadı: ' . ($targetSku ?: $targetSira),
+                'products' => $products
+            ], JSON_UNESCAPED_UNICODE);
             exit;
         }
     } else {

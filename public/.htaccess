@@ -2,33 +2,39 @@
   RewriteEngine On
   RewriteBase /
 
-  # Handle CORS and cache control headers
-  <IfModule mod_headers.c>
-    Header set Access-Control-Allow-Origin "*"
-    Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-    Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Cache-Control"
+  # Handle CORS headers if needed
+  Header set Access-Control-Allow-Origin "*"
+  Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+  Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Cache-Control"
 
-    # Disable caching for all API endpoints and JSON data files
-    <FilesMatch "\.(php|json)$">
-      Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0"
-      Header set Pragma "no-cache"
-      Header set Expires "0"
-    </FilesMatch>
-  </IfModule>
+  # Route /api/admin/* endpoints to api/admin.php with explicit parameter passing
+  RewriteRule ^api/admin/products/by-sira/([^/?]+)$ api/admin.php?action=products&sira_no=$1 [QSA,L]
+  RewriteRule ^api/admin/products/([^/?]+)$ api/admin.php?action=products&sku=$1 [QSA,L]
+  RewriteRule ^api/admin/products(/.*)?$ api/admin.php?action=products [QSA,L]
 
-  # Route /api/admin/* endpoints to api/admin.php
+  RewriteRule ^api/admin/articles/([^/?]+)$ api/admin.php?action=articles&id=$1 [QSA,L]
   RewriteRule ^api/admin/articles(/.*)?$ api/admin.php?action=articles [QSA,L]
-  RewriteRule ^api/admin/products(?:/(.+))?$ api/admin.php?action=products&sku=$1 [QSA,L]
+
+  RewriteRule ^api/admin/categories/([^/?]+)$ api/admin.php?action=categories&id=$1 [QSA,L]
   RewriteRule ^api/admin/categories(/.*)?$ api/admin.php?action=categories [QSA,L]
+
   RewriteRule ^api/admin/settings(/.*)?$ api/admin.php?action=settings [QSA,L]
   RewriteRule ^api/admin/refresh-rate(/.*)?$ api/admin.php?action=refresh-rate [QSA,L]
+  RewriteRule ^api/admin/multiplier-templates/([^/?]+)$ api/admin.php?action=multiplier-templates&id=$1 [QSA,L]
   RewriteRule ^api/admin/multiplier-templates(/.*)?$ api/admin.php?action=multiplier-templates [QSA,L]
   RewriteRule ^api/admin(/.*)?$ api/admin.php [QSA,L]
 
   # Route public API endpoints to api/api.php
-  RewriteRule ^api/articles(/.*)?$ api/api.php?action=articles [QSA,L]
+  RewriteRule ^api/products/by-sira/([^/?]+)$ api/api.php?action=products&sira_no=$1 [QSA,L]
+  RewriteRule ^api/products/([^/?]+)$ api/api.php?action=products&sku=$1 [QSA,L]
   RewriteRule ^api/products(/.*)?$ api/api.php?action=products [QSA,L]
+
+  RewriteRule ^api/articles/([^/?]+)$ api/api.php?action=articles&id=$1 [QSA,L]
+  RewriteRule ^api/articles(/.*)?$ api/api.php?action=articles [QSA,L]
+
+  RewriteRule ^api/categories/([^/?]+)$ api/api.php?action=categories&id=$1 [QSA,L]
   RewriteRule ^api/categories(/.*)?$ api/api.php?action=categories [QSA,L]
+
   RewriteRule ^api/settings(/.*)?$ api/api.php?action=settings [QSA,L]
 
   # Fallback any other /api/* requests to api/api.php

@@ -1,5 +1,15 @@
 [
   {
+    "urun_kodu": "TEST-DEL-999",
+    "urun_adi": "Silme Test Urunu 2",
+    "sira_no": 88,
+    "birim_fiyat": 0,
+    "birim_fiyati": 0,
+    "fiyat_aliniz": true,
+    "para_birimi": "TL",
+    "stok_durumu": "Siparişle"
+  },
+  {
     "sira_no": 1,
     "urun_kodu": "KRG-2030-01",
     "urun_kategorisi": "E-TİCARET VE KARGO AMBALAJLARI",

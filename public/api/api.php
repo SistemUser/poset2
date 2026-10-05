@@ -228,6 +228,28 @@ if ($method === 'POST') {
         $method = strtoupper((string)$input['_method']);
     } elseif (isset($_GET['_method'])) {
         $method = strtoupper((string)$_GET['_method']);
+    } elseif (isset($input['action']) && in_array(strtolower((string)$input['action']), ['delete', 'delete_product'])) {
+        $method = 'DELETE';
+    }
+}
+
+if ($action === 'delete_product') {
+    $action = 'products';
+    $method = 'DELETE';
+}
+if (empty($action)) {
+    $uris = [
+        $_SERVER['REQUEST_URI'] ?? '',
+        $_SERVER['REDIRECT_URL'] ?? '',
+        $_SERVER['PATH_INFO'] ?? '',
+        $_SERVER['PHP_SELF'] ?? ''
+    ];
+    foreach ($uris as $u) {
+        $path = parse_url($u, PHP_URL_PATH) ?? '';
+        if (str_contains($path, '/products')) { $action = 'products'; break; }
+        if (str_contains($path, '/categories')) { $action = 'categories'; break; }
+        if (str_contains($path, '/settings')) { $action = 'settings'; break; }
+        if (str_contains($path, '/articles')) { $action = 'articles'; break; }
     }
 }
 
@@ -301,6 +323,67 @@ if ($action === 'products') {
             $products[] = $newProd;
             saveDbData($productsFile, $products);
             echo json_encode(['success' => true, 'product' => $newProd, 'products' => $products], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    } elseif ($method === 'DELETE') {
+        $products = getDbData($productsFile, []);
+        $targetSku = trim(urldecode((string)($_GET['sku'] ?? ($_GET['urun_kodu'] ?? ($input['urun_kodu'] ?? ($input['sku'] ?? ($input['id'] ?? ($_GET['id'] ?? ''))))))));
+        $targetSira = trim((string)($_GET['sira_no'] ?? ($input['sira_no'] ?? '')));
+
+        if (empty($targetSku) && empty($targetSira)) {
+            $uris = array_filter([
+                $_SERVER['REQUEST_URI'] ?? '',
+                $_SERVER['REDIRECT_URL'] ?? '',
+                $_SERVER['PATH_INFO'] ?? '',
+                $_SERVER['PHP_SELF'] ?? ''
+            ]);
+            foreach ($uris as $u) {
+                $path = parse_url($u, PHP_URL_PATH) ?? '';
+                if (preg_match('#/products/by-sira/([^/?]+)#i', $path, $m)) {
+                    $targetSira = trim(urldecode($m[1]));
+                    break;
+                } elseif (preg_match('#/products/([^/?]+)#i', $path, $m)) {
+                    $targetSku = trim(urldecode($m[1]));
+                    break;
+                }
+            }
+        }
+        $targetSku = trim($targetSku);
+        $targetSira = trim($targetSira);
+
+        $newProducts = [];
+        $deleted = false;
+        foreach ($products as $p) {
+            $pCode = trim((string)($p['urun_kodu'] ?? ($p['sku'] ?? ($p['id'] ?? ''))));
+            $pSira = trim((string)($p['sira_no'] ?? ''));
+
+            $matchCode = (!empty($targetSku) && strcasecmp($pCode, $targetSku) === 0);
+            $matchSira = (!empty($targetSira) && $pSira === $targetSira);
+
+            if ($matchCode || $matchSira) {
+                $deleted = true;
+                continue;
+            }
+            $newProducts[] = $p;
+        }
+
+        if ($deleted) {
+            saveDbData($productsFile, $newProducts);
+            echo json_encode([
+                'success' => true, 
+                'deleted_sku' => $targetSku ?: $targetSira, 
+                'count' => count($newProducts),
+                'products' => $newProducts,
+                'message' => 'Ürün veritabanından başarıyla silindi.'
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        } else {
+            http_response_code(404);
+            echo json_encode([
+                'success' => false, 
+                'error' => 'Silinecek ürün veritabanında bulunamadı: ' . ($targetSku ?: $targetSira),
+                'products' => $products
+            ], JSON_UNESCAPED_UNICODE);
             exit;
         }
     } else {

@@ -918,6 +918,15 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
         });
       }
 
+      // If still not ok, try direct PHP script endpoint fallback
+      if (!res.ok) {
+        res = await fetch(getApiEndpoint("api/admin.php?action=products"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...finalProd, _method: method })
+        }).catch(() => res);
+      }
+
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.message || errData.error || `Sunucu hatası: ${res.status}`);
@@ -961,38 +970,116 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
   const handleDeleteProduct = async () => {
     if (!deleteConfirmProduct) return;
     setIsDeletingProduct(true);
-    const targetCode = deleteConfirmProduct.urun_kodu;
 
-    // 1. Immediately update React state & localStorage
-    setProducts(prev => prev.filter(p => p.urun_kodu !== targetCode));
-    setGlobalProducts(prev => {
-      const cleanCode = (targetCode || "").trim().toLowerCase();
-      const next = prev.filter(p => (p.urun_kodu || "").trim().toLowerCase() !== cleanCode);
-      try { localStorage.setItem("poset_app_products", JSON.stringify(next)); } catch (e) {}
-      return next;
-    });
+    const targetCode = (deleteConfirmProduct.urun_kodu || (deleteConfirmProduct as any).sku || "").trim();
+    const targetSira = deleteConfirmProduct.sira_no ? String(deleteConfirmProduct.sira_no).trim() : "";
+    const productName = deleteConfirmProduct.urun_adi || targetCode;
+
+    // Filter helper
+    const filterOutProduct = (list: DbProduct[]) => {
+      const cleanCode = targetCode.toLowerCase();
+      return list.filter(p => {
+        const pCode = String(p.urun_kodu || (p as any).sku || (p as any).id || "").trim().toLowerCase();
+        const pSira = String(p.sira_no || "").trim();
+        if (cleanCode && pCode === cleanCode) return false;
+        if (targetSira && pSira === targetSira) return false;
+        return true;
+      });
+    };
+
+    // Candidate endpoints to attempt deletion across REST, mod_rewrite, PHP direct, and override
+    const candidateRequests: Array<{ url: string; method: string; body?: any }> = [
+      {
+        url: getApiEndpoint(`api/admin/products/${encodeURIComponent(targetCode)}?sku=${encodeURIComponent(targetCode)}&urun_kodu=${encodeURIComponent(targetCode)}&sira_no=${encodeURIComponent(targetSira)}`),
+        method: "DELETE",
+        body: { urun_kodu: targetCode, sku: targetCode, sira_no: targetSira }
+      },
+      {
+        url: getApiEndpoint(`api/admin.php?action=products&sku=${encodeURIComponent(targetCode)}&urun_kodu=${encodeURIComponent(targetCode)}&sira_no=${encodeURIComponent(targetSira)}`),
+        method: "DELETE",
+        body: { urun_kodu: targetCode, sku: targetCode, sira_no: targetSira }
+      },
+      {
+        url: getApiEndpoint("api/admin.php?action=products"),
+        method: "POST",
+        body: { urun_kodu: targetCode, sku: targetCode, sira_no: targetSira, _method: "DELETE", action: "delete_product" }
+      },
+      {
+        url: getApiEndpoint("api/admin/products"),
+        method: "POST",
+        body: { urun_kodu: targetCode, sku: targetCode, sira_no: targetSira, _method: "DELETE", action: "delete_product" }
+      },
+      {
+        url: getApiEndpoint(`api/products/${encodeURIComponent(targetCode)}?sku=${encodeURIComponent(targetCode)}`),
+        method: "DELETE",
+        body: { urun_kodu: targetCode, sku: targetCode, sira_no: targetSira }
+      },
+      {
+        url: getApiEndpoint("api/api.php?action=products"),
+        method: "POST",
+        body: { urun_kodu: targetCode, sku: targetCode, sira_no: targetSira, _method: "DELETE", action: "delete_product" }
+      }
+    ];
+
+    let serverSuccess = false;
+    let serverUpdatedProducts: DbProduct[] | null = null;
+
+    for (const req of candidateRequests) {
+      try {
+        const fetchOptions: RequestInit = {
+          method: req.method,
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache"
+          }
+        };
+        if (req.body) {
+          fetchOptions.body = JSON.stringify(req.body);
+        }
+
+        const res = await fetch(req.url, fetchOptions);
+        if (res.ok) {
+          const resData = await res.json().catch(() => null);
+          if (resData && (resData.success === true || Array.isArray(resData.products) || resData.deleted_sku)) {
+            serverSuccess = true;
+            if (Array.isArray(resData.products)) {
+              serverUpdatedProducts = resData.products.map((p: any) => {
+                const rawPrice = p.birim_fiyat ?? p.birim_fiyati ?? 0;
+                const price = typeof rawPrice === "number" ? rawPrice : (parseFloat(String(rawPrice).replace(',', '.')) || 0);
+                return {
+                  ...p,
+                  birim_fiyat: price,
+                  birim_fiyati: price,
+                  fiyat_aliniz: p.fiyat_aliniz === true || price <= 0,
+                  isPremiumPrice: false
+                };
+              });
+            }
+            break;
+          }
+        }
+      } catch (err) {
+        // Continue to next candidate
+      }
+    }
+
+    // Apply deletion to client state and localStorage
+    const nextProducts = serverUpdatedProducts ? serverUpdatedProducts : filterOutProduct(products);
+    setProducts(nextProducts);
+    setGlobalProducts(nextProducts);
+    try {
+      localStorage.setItem("poset_app_products", JSON.stringify(nextProducts));
+    } catch (e) {}
+
     window.dispatchEvent(new CustomEvent('poset:sync'));
     setDeleteConfirmProduct(null);
-    triggerToast("✓ Ürün başarıyla silindi.");
+    setIsDeletingProduct(false);
 
-    // 2. Sync deletion to server with HTTP fallback
-    try {
-      const delRes = await fetch(getApiEndpoint(`api/admin/products/${encodeURIComponent(targetCode)}`), {
-        method: "DELETE"
-      });
-      if (!delRes.ok) {
-        // Fallback to POST with _method: DELETE for restrictive hosts
-        await fetch(getApiEndpoint("api/admin/products"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ urun_kodu: targetCode, _method: "DELETE" })
-        }).catch(() => {});
-      }
-    } catch (err) {
-      console.warn("Background delete product warning:", err);
-    } finally {
-      setIsDeletingProduct(false);
-      await syncGlobalProducts().catch(() => {});
+    if (serverSuccess) {
+      triggerToast(`✓ "${productName}" (${targetCode}) veritabanından kalıcı olarak silindi.`);
+    } else {
+      triggerToast(`⚠️ "${productName}" yerel olarak silindi. Sunucu bağlantısı veya izinlerini kontrol edin.`);
     }
   };
 
