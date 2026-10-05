@@ -2247,7 +2247,12 @@
     "birim_fiyati": 150,
     "isPremiumPrice": false,
     "birim_fiyat": 150,
-    "fiyat_aliniz": false
+    "fiyat_aliniz": false,
+    "base_price": 150,
+    "is_quote_only": false,
+    "unit": "Kg",
+    "allow_custom_dimensions": true,
+    "allow_custom_size": true
   },
   {
     "sira_no": 75,

@@ -12,6 +12,17 @@ import { ChatMessage, QuoteSpec, ImageType, QuoteItem } from "../types";
 import { CATEGORIES, TAXONOMY_PRODUCTS } from "../productsData";
 import { useAppConfig } from "../AppContext";
 import { getImgSrc, handleImageError } from "../utils/imageHelper";
+import { 
+  isCustomOnlyProduct, 
+  getParentProductInfo 
+} from "../utils/customProductHelper";
+import { 
+  useQuote, 
+  formatCustomProductTitle, 
+  formatCustomDimensions, 
+  generateWhatsAppQuoteText, 
+  getWhatsAppQuoteUrl 
+} from "../context/QuoteContext";
 
 // Dynamic dimension choices by category group
 const DIMENSIONS_BY_GROUP = {
@@ -233,24 +244,8 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
   const [checkoutSubmitted, setCheckoutSubmitted] = useState(false);
 
-  // Çoklu Teklif Sepeti (Multi-Item RFQ) State - localStorage tabanlı temiz başlangıç
-  const [quoteBasket, setQuoteBasket] = useState<QuoteItem[]>(() => {
-    try {
-      const saved = localStorage.getItem("poset_quote_basket");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {}
-    return [];
-  });
-
-  // Sepet değiştiğinde localStorage senkronizasyonu
-  useEffect(() => {
-    try {
-      localStorage.setItem("poset_quote_basket", JSON.stringify(quoteBasket));
-    } catch (e) {}
-  }, [quoteBasket]);
+  // Global Çoklu Teklif Sepeti Context Hook
+  const { quoteBasket, setQuoteBasket } = useQuote();
 
   // Ambalaj Konfigüratörü (Deterministic Selector) State
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<"kargo_eticaret" | "plastik_poset" | "kagit_karton" | "bez_tela" | "koruyucu_endustriyel">("kargo_eticaret");
@@ -269,11 +264,30 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
     const allDbProds = (Array.isArray(dbProducts) && dbProducts.length > 0) ? dbProducts : products;
 
     return rawProds.filter(prod => {
-      return prod.variants.some(v => {
+      const cleanProdName = prod.name.trim().toLowerCase();
+      // Check if product has a master custom record in DB
+      const matchedDb = allDbProds.filter((p: any) => {
+        const pName = (p.urun_adi || "").trim().toLowerCase();
+        return pName === cleanProdName || pName.includes(cleanProdName) || cleanProdName.includes(pName);
+      });
+      const hasCustomMaster = matchedDb.some(p => isCustomOnlyProduct(p));
+      if (hasCustomMaster || (prod as any).is_custom_only === true) return true;
+
+      // Check if at least one variant is in stock
+      const hasInStock = prod.variants.some(v => {
         const live = allDbProds.find((p: any) => p.urun_kodu && v.urun_kodu && p.urun_kodu.trim().toLowerCase() === v.urun_kodu.trim().toLowerCase());
         const stok = live?.stok_durumu || v.stok_durumu || "Siparişle";
         return stok !== "Yok" && stok !== "Stokta Yok";
       });
+      if (hasInStock) return true;
+
+      // If all standard variants were deleted, product stays visible in Step 2 as custom-only!
+      const anyVariantInDb = prod.variants.some(v => {
+        return allDbProds.some((p: any) => p.urun_kodu && v.urun_kodu && p.urun_kodu.trim().toLowerCase() === v.urun_kodu.trim().toLowerCase());
+      });
+      if (!anyVariantInDb) return true;
+
+      return false;
     });
   }, [selectedCategoryKey, dbProducts, products]);
 
@@ -281,7 +295,35 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
     return TAXONOMY_PRODUCTS.find(p => p.id === selectedProductId) || availableProducts[0] || TAXONOMY_PRODUCTS[0];
   }, [selectedProductId, availableProducts]);
 
+  const isCurrentProductCustomOnly = useMemo(() => {
+    if (!selectedProductGroup) return false;
+    const cleanName = selectedProductGroup.name.trim().toLowerCase();
+    const allDbProds = (Array.isArray(dbProducts) && dbProducts.length > 0) ? dbProducts : products;
+    const matchedDb = allDbProds.filter((p: any) => {
+      const pName = (p.urun_adi || "").trim().toLowerCase();
+      return pName === cleanName || pName.includes(cleanName) || cleanName.includes(pName);
+    });
+    if (matchedDb.some(p => isCustomOnlyProduct(p))) return true;
+    if ((selectedProductGroup as any).is_custom_only === true) return true;
+    
+    // Filter available standard variants in DB
+    const validStandardVariants = (selectedProductGroup.variants || []).filter(v => {
+      return matchedDb.some(p => p.urun_kodu && v.urun_kodu && p.urun_kodu.trim().toLowerCase() === v.urun_kodu.trim().toLowerCase());
+    });
+    if (matchedDb.length > 0 && validStandardVariants.length === 0) return true;
+    return false;
+  }, [selectedProductGroup, dbProducts, products]);
+
+  // Sadece özel ölçülü ürün seçildiğinde varyasyon dropdown'ını doğrudan "custom_other" yap ve ölçü formunu aç
+  useEffect(() => {
+    if (isCurrentProductCustomOnly) {
+      setSelectedVariantCode("custom_other");
+      setIsCustomDimension(true);
+    }
+  }, [isCurrentProductCustomOnly, selectedProductId]);
+
   const availableVariants = useMemo(() => {
+    if (isCurrentProductCustomOnly) return [];
     const raw = selectedProductGroup?.variants || [];
     const allDbProds = (Array.isArray(dbProducts) && dbProducts.length > 0) ? dbProducts : products;
 
@@ -306,7 +348,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
         fiyat_carpanlari: live.fiyat_carpanlari || live.fiyat_carpan_sablonu || v.fiyat_carpanlari
       };
     }).filter(v => v.stok_durumu !== "Yok" && v.stok_durumu !== "Stokta Yok");
-  }, [selectedProductGroup, dbProducts, products]);
+  }, [selectedProductGroup, isCurrentProductCustomOnly, dbProducts, products]);
 
   const activeConfiguratorVariant = useMemo(() => {
     const baseVariant = availableVariants.find(v => v.urun_kodu === selectedVariantCode) || availableVariants[0] || selectedProductGroup?.variants[0] || null;
@@ -707,6 +749,41 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
     ? activeVariant.kalinlik_seviyesi 
     : (matchedProduct && matchedProduct.variants.length > 0 ? matchedProduct.variants[0].kalinlik_seviyesi : (activeSpec ? activeSpec.thickness : "80 Mikron"));
 
+  const parentProductInfo = useMemo(() => {
+    const allDbProds = (Array.isArray(dbProducts) && dbProducts.length > 0) ? dbProducts : products;
+    const baseName = matchedProduct?.name || selectedProductGroup?.name || "Özel Ürün";
+    const matchedDb = allDbProds.find((p: any) => {
+      const pName = (p.urun_adi || "").trim().toLowerCase();
+      const cleanBase = baseName.trim().toLowerCase();
+      return pName === cleanBase || pName.includes(cleanBase) || cleanBase.includes(pName);
+    });
+    return getParentProductInfo(baseName, matchedDb || activeVariant);
+  }, [matchedProduct, selectedProductGroup, activeVariant, dbProducts, products]);
+
+  const resolvedHammadde = useMemo(() => {
+    return activeVariant?.hammadde_turu || 
+      (activeVariant as any)?.hammadde || 
+      matchedProduct?.malzeme || 
+      parentProductInfo.parentHammadde || 
+      activeSpec?.material || 
+      "Standart Hammadde";
+  }, [activeVariant, matchedProduct, parentProductInfo, activeSpec]);
+
+  const resolvedSatisSekli = useMemo(() => {
+    return activeVariant?.satis_sekli || 
+      (activeVariant as any)?.unit || 
+      parentProductInfo.parentSatisSekli || 
+      unitLabelStr || 
+      "Kg";
+  }, [activeVariant, parentProductInfo, unitLabelStr]);
+
+  const resolvedKoruk = useMemo(() => {
+    if (customKoruk?.trim() && customKoruk.trim() !== "0") {
+      return `${customKoruk.trim()} cm Körük`;
+    }
+    return activeVariant?.koruk_detayi || parentProductInfo.parentKoruk || "Özel İmalata Göre";
+  }, [customKoruk, activeVariant, parentProductInfo]);
+
   const currentStokDurumu: "Var" | "Siparişle" | "Yok" | string = (() => {
     if (selectedVariantCode === "custom" || selectedVariantCode === "custom_other" || isCustomDimension) return "Siparişle";
     if (activeVariant?.stok_durumu) return activeVariant.stok_durumu;
@@ -821,7 +898,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
     return appliedMult;
   };
 
-  const isCustomSize = selectedVariantCode === "custom" || isCustomDimension;
+  const isCustomSize = selectedVariantCode === "custom" || selectedVariantCode === "custom_other" || isCustomDimension || isCurrentProductCustomOnly;
 
   // Fiyat mirası: Varyasyonda özel fiyat yoksa ana ürünün birim fiyatını (örn: 400 TL) kullan
   const rawPrice = Number(
@@ -883,13 +960,13 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
 
   const handleAddToQuoteBasket = () => {
     const isOutOfStock = currentStokDurumu === "Yok" || currentStokDurumu === "Stokta Yok";
-    if (isOutOfStock) {
+    if (isOutOfStock && !isCurrentProductCustomOnly) {
       alert("Seçilen ürün stokta olmadığı için sipariş / fiyat teklifi alınamamaktadır.");
       triggerToast("❌ Stokta olmayan ürün için teklif verilemez.");
       return;
     }
 
-    if (isCustomSize) {
+    if (isCustomSize || isCurrentProductCustomOnly) {
       if (!customEn.trim() || !customBoy.trim()) {
         alert("Lütfen özel ölçü için en ve boy değerlerini girin");
         triggerToast("❌ Lütfen özel ölçü için en ve boy değerlerini girin");
@@ -897,30 +974,30 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
       }
     }
 
-    if (!activeSpec) return;
+    const baseProductName = matchedProduct?.name || selectedProduct?.name || selectedProductGroup?.name || parentProductInfo.parentTitle || activeSpec?.name || "Ambalaj Ürünü";
+    const customOlcuStr = (isCustomSize || isCurrentProductCustomOnly) 
+      ? formatCustomDimensions(customEn, customBoy, customKoruk)
+      : (activeVariant?.olculer || selectedDim || "Standart Ölçü");
 
-    const baseProductName = matchedProduct?.name || selectedProduct?.name || selectedProductGroup?.name || activeSpec.name || "Ambalaj Ürünü";
-    const customOlcuStr = isCustomSize 
-      ? `${customEn} x ${customBoy}${customKoruk?.trim() ? ' + ' + customKoruk.trim() + ' cm' : ' cm'}`
-      : (activeVariant?.olculer || selectedDim);
-
-    const customNameStr = isCustomSize
-      ? `${baseProductName} - Özel Ölçü İmalat`
+    const customNameStr = (isCustomSize || isCurrentProductCustomOnly)
+      ? formatCustomProductTitle(baseProductName)
       : baseProductName;
 
     const newItem: QuoteItem = {
       id: `basket-item-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      urun_kodu: isCustomSize ? "OZEL-OLCU" : (activeVariant?.urun_kodu || selectedVariantCode || "KRG-2030-01"),
+      urun_kodu: (isCustomSize || isCurrentProductCustomOnly) ? `${parentProductInfo.prefix.toUpperCase()}-CUSTOM` : (activeVariant?.urun_kodu || selectedVariantCode || "PRD-01"),
       urun_adi: customNameStr,
       kategori: selectedCategoryKey,
       olculer: customOlcuStr,
       miktar: adjustedQty,
-      satis_sekli: unitLabelStr,
+      satis_sekli: resolvedSatisSekli,
+      hammadde: resolvedHammadde,
+      is_custom_only: isCustomSize || isCurrentProductCustomOnly,
       baski_durumu: adjustedBaskiTercihi,
       renk_sayisi: adjustedBaskiTercihi === "Baskılı" ? adjustedRenkSayisi : "Baskısız",
-      birim_fiyat: isCustomSize ? 0 : (calculatedUnitPriceNum || 0),
-      toplam_fiyat: isCustomSize ? 0 : (calculatedTotalPriceNum || 0),
-      stok_durumu: isCustomSize ? "Sipariş Üzerine Üretim" : (currentStokDurumu === "Var" || currentStokDurumu === "Stokta Var" ? "Stokta Var" : currentStokDurumu),
+      birim_fiyat: (isCustomSize || isCurrentProductCustomOnly) ? 0 : (calculatedUnitPriceNum || 0),
+      toplam_fiyat: (isCustomSize || isCurrentProductCustomOnly) ? 0 : (calculatedTotalPriceNum || 0),
+      stok_durumu: (isCustomSize || isCurrentProductCustomOnly) ? "Sipariş Üzerine Üretim" : (currentStokDurumu === "Var" || currentStokDurumu === "Stokta Var" ? "Stokta Var" : currentStokDurumu),
       logo_dosya_adi: persistentLogoName,
       fatura_cebi_dahil: addAdhesivePocket && isKargoCategory,
       musteri_notu: customerNote.trim() || undefined
@@ -1062,17 +1139,81 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
     if (!skuCode) return false;
     const cleanSku = skuCode.trim().toLowerCase();
 
+    // 1. Search in static taxonomy products
     for (const prod of TAXONOMY_PRODUCTS) {
       const vMatch = prod.variants.find(v => v.urun_kodu.toLowerCase() === cleanSku);
       if (vMatch) {
         setSelectedCategoryKey(prod.categoryKey);
         setSelectedProductId(prod.id);
+        setSelectedProduct(prod);
         setSelectedVariantCode(vMatch.urun_kodu);
         setSelectedDim(vMatch.olculer);
+        setIsCustomDimension(false);
+        setCustomEn("");
+        setCustomBoy("");
+        setCustomKoruk("");
         updateActiveSpecForProductAndVariant(prod, vMatch);
         return true;
       }
     }
+
+    // 2. Search in live DB products
+    const allDbProds = (Array.isArray(dbProducts) && dbProducts.length > 0) ? dbProducts : products;
+    const dbMatch = allDbProds.find((p: any) => {
+      const pCode = (p.urun_kodu || p.sku || "").trim().toLowerCase();
+      return pCode === cleanSku;
+    });
+
+    if (dbMatch) {
+      const matchedTaxProd = TAXONOMY_PRODUCTS.find(tp => {
+        const tpName = tp.name.trim().toLowerCase();
+        const dbName = (dbMatch.urun_adi || "").trim().toLowerCase();
+        return tpName === dbName || tpName.includes(dbName) || dbName.includes(tpName);
+      }) || TAXONOMY_PRODUCTS[0];
+
+      setSelectedCategoryKey(matchedTaxProd.categoryKey);
+      setSelectedProductId(matchedTaxProd.id);
+      setSelectedProduct(matchedTaxProd);
+
+      if (isCustomOnlyProduct(dbMatch) || cleanSku.endsWith("-custom")) {
+        setSelectedVariantCode("custom_other");
+        setIsCustomDimension(true);
+        setSelectedDim("Özel İmalat (Müşteri Ölçüsü)");
+      } else {
+        setSelectedVariantCode(dbMatch.urun_kodu || cleanSku);
+        setSelectedDim(dbMatch.olculer || dbMatch.olcu || "Standart Ölçü");
+        setIsCustomDimension(false);
+        setCustomEn("");
+        setCustomBoy("");
+        setCustomKoruk("");
+        const vMatch = matchedTaxProd.variants.find(v => v.urun_kodu.toLowerCase() === cleanSku) || {
+          urun_kodu: dbMatch.urun_kodu || cleanSku,
+          olculer: dbMatch.olculer || dbMatch.olcu || "Standart Ölçü",
+          moq: dbMatch.moq || "5.000 Adet",
+          fiyat_carpanlari: dbMatch.fiyat_carpanlari || "",
+          hammadde_turu: dbMatch.hammadde_turu || dbMatch.hammadde || "Standart",
+          kalinlik_seviyesi: dbMatch.kalinlik_seviyesi || dbMatch.kalinlik || "Standart",
+          baski_durumu: dbMatch.baski_durumu || "Baskılı",
+          kargo_bant_tipi: dbMatch.kargo_bant_tipi || "Yok",
+          kulp_tipi: dbMatch.kulp_tipi || "Yok",
+          koruk_detayi: dbMatch.koruk_detayi || "Yok",
+          geridonusum_orani: "%30",
+          termin_suresi: dbMatch.termin_suresi || "7 İş Günü",
+          zemin_rengi: dbMatch.zemin_rengi || "Beyaz",
+          irsaliye_cebi_detay: "Yok",
+          uyumlu_sektorler: "Tüm Sektörler",
+          kullanim_amaci: "Genel Ambalaj",
+          stok_durumu: dbMatch.stok_durumu || "Siparişle",
+          baski_renk_yon: dbMatch.baski_renk_yon || "1 + 0 (Ön Yüz)",
+          satis_sekli: dbMatch.satis_sekli || "Adet",
+          birim_fiyati: dbMatch.birim_fiyat || 0,
+          para_birimi: dbMatch.para_birimi || "TL"
+        } as any;
+        updateActiveSpecForProductAndVariant(matchedTaxProd, vMatch);
+      }
+      return true;
+    }
+
     return false;
   };
 
@@ -1091,6 +1232,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
       if (defaultProd && defaultVar) {
         setSelectedCategoryKey(defaultProd.categoryKey);
         setSelectedProductId(defaultProd.id);
+        setSelectedProduct(defaultProd);
         setSelectedVariantCode(defaultVar.urun_kodu);
         setSelectedDim(defaultVar.olculer);
         updateActiveSpecForProductAndVariant(defaultProd, defaultVar);
@@ -1108,16 +1250,48 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
         const boy = parts[2] || "";
         const koruk = parts[3] || "";
         
-        const matchedProd = TAXONOMY_PRODUCTS.find(p => p.id === prodId || p.name.includes(prodId));
+        const allDbProds = (Array.isArray(dbProducts) && dbProducts.length > 0) ? dbProducts : products;
+        const cleanProdId = (prodId || "").toLowerCase();
+
+        const matchedProd = TAXONOMY_PRODUCTS.find(p => 
+          p.id.toLowerCase() === cleanProdId || 
+          p.name.toLowerCase().includes(cleanProdId) || 
+          cleanProdId.includes(p.name.toLowerCase())
+        ) || TAXONOMY_PRODUCTS[0];
+
         if (matchedProd) {
           setSelectedCategoryKey(matchedProd.categoryKey);
           setSelectedProductId(matchedProd.id);
+          setSelectedProduct(matchedProd);
         }
-        setSelectedVariantCode("custom");
+
+        setSelectedVariantCode("custom_other");
         setIsCustomDimension(true);
         setCustomEn(en);
         setCustomBoy(boy);
         setCustomKoruk(koruk !== "0" ? koruk : "");
+
+        const customDimText = (en && boy) 
+          ? formatCustomDimensions(en, boy, koruk) 
+          : "Özel İmalat (Müşteri Ölçüsü)";
+        setSelectedDim(customDimText);
+
+        const pInfo = getParentProductInfo(matchedProd?.name || "", allDbProds.find((p: any) => p.urun_adi === matchedProd?.name));
+        setActiveSpec((prev: any) => ({
+          ...prev,
+          name: matchedProd?.name || prev?.name || "Özel Ürün",
+          dimensions: customDimText,
+          material: pInfo.parentHammadde,
+          thickness: "İsteğe Bağlı / Standart",
+          moq: pInfo.parentMOQ,
+          closure: "Özel İmalata Göre",
+          color: "Özel",
+          leadTime: "7-10 İş Günü",
+          stokDurumu: "Sipariş Üzerine Üretim",
+          stok_durumu: "Sipariş Üzerine Üretim",
+          unitPrice: "Fiyat Alınız",
+          totalPrice: "Fiyat Alınız"
+        }));
       } else if (initialPrompt.startsWith("sku:")) {
         const skuCode = initialPrompt.replace("sku:", "").trim();
         applySkuSelection(skuCode);
@@ -1132,10 +1306,15 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
           if (matchedProd) {
             setSelectedCategoryKey(matchedProd.categoryKey);
             setSelectedProductId(matchedProd.id);
+            setSelectedProduct(matchedProd);
             const matchedVar = matchedProd.variants.find(v => lowerPrompt.includes(v.olculer.toLowerCase())) || matchedProd.variants[0];
             if (matchedVar) {
               setSelectedVariantCode(matchedVar.urun_kodu);
               setSelectedDim(matchedVar.olculer);
+              setIsCustomDimension(false);
+              setCustomEn("");
+              setCustomBoy("");
+              setCustomKoruk("");
               updateActiveSpecForProductAndVariant(matchedProd, matchedVar);
             }
           }
@@ -1143,7 +1322,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
       }
       onClearInitialPrompt();
     }
-  }, [initialPrompt]);
+  }, [initialPrompt, dbProducts, products]);
 
   // Scroll logic helper
   useEffect(() => {
@@ -1419,11 +1598,50 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                       onClick={() => {
                         setSelectedProductId(prod.id);
                         setSelectedProduct(prod);
-                        const v = prod.variants[0];
-                        if (v) {
-                          setSelectedVariantCode(v.urun_kodu);
-                          setSelectedDim(v.olculer);
-                          updateActiveSpecForProductAndVariant(prod, v);
+
+                        const allDbProds = (Array.isArray(dbProducts) && dbProducts.length > 0) ? dbProducts : products;
+                        const cleanPName = prod.name.trim().toLowerCase();
+                        const matchedDb = allDbProds.filter((p: any) => {
+                          const pName = (p.urun_adi || "").trim().toLowerCase();
+                          return pName === cleanPName || pName.includes(cleanPName) || cleanPName.includes(pName);
+                        });
+                        const hasCustomMaster = matchedDb.some(p => isCustomOnlyProduct(p));
+                        const hasStandardDbVariants = matchedDb.some(p => !isCustomOnlyProduct(p));
+                        const isCustom = (prod as any).is_custom_only === true || 
+                          hasCustomMaster || 
+                          (matchedDb.length > 0 && !hasStandardDbVariants);
+
+                        if (isCustom) {
+                          setSelectedVariantCode("custom_other");
+                          setSelectedDim("Özel İmalat (Müşteri Ölçüsü)");
+                          setIsCustomDimension(true);
+                          const pInfo = getParentProductInfo(prod.name, matchedDb[0]);
+                          setActiveSpec((prev: any) => ({
+                            ...prev,
+                            name: prod.name,
+                            dimensions: "Özel İmalat (Müşteri Ölçüsü)",
+                            material: pInfo.parentHammadde,
+                            thickness: "İsteğe Bağlı / Standart",
+                            moq: pInfo.parentMOQ,
+                            closure: "Özel İmalata Göre",
+                            color: "Özel",
+                            leadTime: "7-10 İş Günü",
+                            stokDurumu: "Sipariş Üzerine Üretim",
+                            stok_durumu: "Sipariş Üzerine Üretim",
+                            unitPrice: "Fiyat Alınız",
+                            totalPrice: "Fiyat Alınız"
+                          }));
+                        } else {
+                          const v = prod.variants[0];
+                          if (v) {
+                            setSelectedVariantCode(v.urun_kodu);
+                            setSelectedDim(v.olculer);
+                            setIsCustomDimension(false);
+                            setCustomEn("");
+                            setCustomBoy("");
+                            setCustomKoruk("");
+                            updateActiveSpecForProductAndVariant(prod, v);
+                          }
                         }
                       }}
                       className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 border ${
@@ -1453,12 +1671,13 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                 )}
               </div>
               <select
-                value={selectedVariantCode}
+                value={selectedVariantCode === "custom" ? "custom_other" : selectedVariantCode}
                 onChange={(e) => {
                   const vCode = e.target.value;
                   setSelectedVariantCode(vCode);
                   if (vCode === "custom" || vCode === "custom_other") {
                     setIsCustomDimension(true);
+                    setSelectedDim(customEn && customBoy ? `${customEn} x ${customBoy} cm` : "Özel İmalat (Müşteri Ölçüsü)");
                   } else {
                     setIsCustomDimension(false);
                     const v = selectedProductGroup?.variants.find(item => item.urun_kodu === vCode);
@@ -1471,7 +1690,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                 }}
                 className="w-full px-4 py-3 bg-white border-2 border-slate-300 rounded-xl text-sm font-bold text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition-all cursor-pointer"
               >
-                {availableVariants.map((v) => (
+                {!isCurrentProductCustomOnly && availableVariants.map((v) => (
                   <option
                     key={v.urun_kodu}
                     value={v.urun_kodu}
@@ -2020,7 +2239,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                           FİYATLANDIRMA DURUMU
                         </span>
                         <span className="text-xl sm:text-2xl font-black text-blue-600 tracking-tight">
-                          {selectedVariantCode === "custom" ? "ÖZEL İMALAT - TEKLİF İSTEYİNİZ" : "ÖZEL TEKLİF ALINIZ"}
+                          {isCustomSize ? "ÖZEL İMALAT - TEKLİF İSTEYİNİZ" : "ÖZEL TEKLİF ALINIZ"}
                         </span>
                       </div>
                       <div className="text-right">
@@ -2028,7 +2247,7 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                           TAHMİNİ TOPLAM
                         </span>
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                          {selectedVariantCode === "custom" ? "Ölçüye Göre Hesaplanır" : "Miktara Göre Özel Canlı Fiyat"}
+                          {isCustomSize ? "Ölçüye Göre Hesaplanır" : "Miktara Göre Özel Canlı Fiyat"}
                         </span>
                       </div>
                     </div>
@@ -2064,33 +2283,43 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                   <div className="divide-y divide-slate-100 text-xs font-semibold bg-slate-50/70 border border-slate-100 rounded-2xl p-4 space-y-0">
                     <div className="py-2 flex justify-between items-center">
                       <span className="text-slate-400 font-medium">Aktif Ürün Grubu:</span>
-                      <span className="font-extrabold text-slate-800 text-right">{matchedProduct?.name || "Kargo Poşeti"}</span>
+                      <span className="font-extrabold text-slate-800 text-right">{matchedProduct?.name || parentProductInfo.parentTitle || "Ambalaj Çözümleri"}</span>
                     </div>
                     <div className="py-2 flex justify-between items-center">
                       <span className="text-slate-400 font-medium">Seçilen Ölçü (Varyasyon):</span>
                       <span className="font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
                         {isCustomSize 
-                          ? `Özel Ölçü: ${customEn || '0'}x${customBoy || '0'}${customKoruk?.trim() ? ' + ' + customKoruk.trim() + ' cm' : ' cm'}`
-                          : (activeVariant?.olculer || selectedDim)
+                          ? (customEn?.trim() && customBoy?.trim() 
+                              ? formatCustomDimensions(customEn, customBoy, customKoruk) 
+                              : "Özel İmalat (Müşteri Ölçüsü)")
+                          : (activeVariant?.olculer || selectedDim || "Standart Ölçü")
                         }
                       </span>
                     </div>
                     <div className="py-2 flex justify-between items-center">
                       <span className="text-slate-400 font-medium">Sipariş Miktarı:</span>
-                      <span className="font-extrabold text-slate-800 font-mono">{adjustedQty.toLocaleString("tr-TR")} {unitLabelStr}</span>
+                      <span className="font-extrabold text-slate-800 font-mono">{adjustedQty.toLocaleString("tr-TR")} {resolvedSatisSekli}</span>
                     </div>
                     <div className="py-2 flex justify-between items-center">
                       <span className="text-slate-400 font-medium">Ana Hammadde:</span>
-                      <span className="font-extrabold text-slate-800">{activeVariant?.hammadde_turu || activeSpec.material}</span>
+                      <span className="font-extrabold text-slate-800">{resolvedHammadde}</span>
+                    </div>
+                    <div className="py-2 flex justify-between items-center">
+                      <span className="text-slate-400 font-medium">Satış Şekli:</span>
+                      <span className="font-extrabold text-slate-800">{resolvedSatisSekli}</span>
+                    </div>
+                    <div className="py-2 flex justify-between items-center">
+                      <span className="text-slate-400 font-medium">Körük Detayı:</span>
+                      <span className="font-extrabold text-slate-800">{resolvedKoruk}</span>
                     </div>
                     <div className="py-2 flex justify-between items-center">
                       <span className="text-slate-400 font-medium">Malzeme Kalınlığı:</span>
-                      <span className="font-extrabold text-slate-800">{currentThicknessStr}</span>
+                      <span className="font-extrabold text-slate-800">{currentThicknessStr || "Standart / İsteğe Bağlı"}</span>
                     </div>
                     <div className="py-2 flex justify-between items-center">
                       <span className="text-slate-400 font-medium">Baskı Durumu:</span>
                       <span className={`font-extrabold px-2 py-0.5 rounded text-[11px] ${adjustedBaskiTercihi === "Baskısız" ? "bg-amber-50 text-amber-700 border border-amber-100" : "bg-indigo-50 text-indigo-700 border border-indigo-100"}`}>
-                        {adjustedBaskiTercihi === "Baskısız" ? "Baskısız (Düz / Standart)" : `Baskılı (${adjustedRenkSayisi})`}
+                        {adjustedBaskiTercihi === "Baskısız" ? "Baskısız (Düz / Standart)" : `Baskılı (${adjustedRenkSayisi || "Standart"})`}
                       </span>
                     </div>
                     {matchedProduct?.categoryKey === "kargo_eticaret" && (
@@ -2111,26 +2340,24 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                         <span className="font-extrabold text-slate-800">{activeVariant?.kulp_tipi || "Yok"}</span>
                       </div>
                     )}
-                    {(matchedProduct?.categoryKey === "plastik_poset" || matchedProduct?.categoryKey === "kagit_karton") && (
-                      <div className="py-2 flex justify-between items-center">
-                        <span className="text-slate-400 font-medium">Körük Detayı:</span>
-                        <span className="font-extrabold text-slate-800">{activeVariant?.koruk_detayi || "Yok"}</span>
-                      </div>
-                    )}
                     <div className="py-2 flex justify-between items-center">
                       <span className="text-slate-400 font-medium">Stok Durumu:</span>
                       <span className={`font-extrabold ${
-                        currentStokDurumu === "Var" || currentStokDurumu === "Stokta Var"
-                          ? "text-emerald-600"
-                          : currentStokDurumu === "Yok" || currentStokDurumu === "Stokta Yok"
-                            ? "text-rose-600"
-                            : "text-blue-600"
+                        (isCurrentProductCustomOnly || isCustomSize)
+                          ? "text-blue-600"
+                          : currentStokDurumu === "Var" || currentStokDurumu === "Stokta Var"
+                            ? "text-emerald-600"
+                            : currentStokDurumu === "Yok" || currentStokDurumu === "Stokta Yok"
+                              ? "text-rose-600"
+                              : "text-blue-600"
                       }`}>
-                        {currentStokDurumu === "Var" || currentStokDurumu === "Stokta Var"
-                          ? "Stokta Var"
-                          : currentStokDurumu === "Yok" || currentStokDurumu === "Stokta Yok"
-                            ? "Stokta Yok"
-                            : "Sipariş Üzerine Üretim"}
+                        {(isCurrentProductCustomOnly || isCustomSize)
+                          ? "Sipariş Üzerine Üretim"
+                          : currentStokDurumu === "Var" || currentStokDurumu === "Stokta Var"
+                            ? "Stokta Var"
+                            : currentStokDurumu === "Yok" || currentStokDurumu === "Stokta Yok"
+                              ? "Stokta Yok"
+                              : "Sipariş Üzerine Üretim"}
                       </span>
                     </div>
                     {customerNote.trim() && (

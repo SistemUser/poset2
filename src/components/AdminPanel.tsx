@@ -10,6 +10,11 @@ import {
 import { AppSettings, DbProduct, CategorySchema, Article } from "../types";
 import { useAppConfig } from "../AppContext";
 import { getApiEndpoint } from "../utils/urlHelper";
+import { 
+  isCustomOnlyProduct, 
+  getParentProductInfo, 
+  createMasterCustomRecord 
+} from "../utils/customProductHelper";
 
 interface AdminPanelProps {
   onBackToSite?: () => void;
@@ -843,6 +848,38 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
     setModalOpen(true);
   };
 
+  // Open Modal to define a new standard variant for a custom-only or existing product group
+  const handleOpenAddStandardVariant = (prod: DbProduct) => {
+    setEditingProduct(null);
+    const parentInfo = getParentProductInfo(prod.urun_adi, prod);
+    const nextSku = `${parentInfo.prefix.toUpperCase()}-${Date.now().toString().slice(-4)}`;
+    const cat = parentInfo.parentCategory || prod.urun_kategorisi || prod.kategori || "Genel";
+    const rule = CATEGORY_FORM_RULES[cat] || DEFAULT_CATEGORY_RULE;
+
+    setFormData({
+      ...defaultFormState,
+      ...prod,
+      urun_kodu: nextSku,
+      sku: nextSku,
+      urun_adi: parentInfo.parentTitle,
+      urun_kategorisi: cat,
+      kategori: cat,
+      olculer: "25 x 35 cm",
+      olcu: "25 x 35 cm",
+      is_custom_only: false,
+      fiyat_aliniz: false,
+      birim_fiyat: 1.0,
+      birim_fiyati: 1.0,
+      stok_durumu: "Var",
+      hammadde_turu: parentInfo.parentHammadde || prod.hammadde_turu,
+      hammadde: parentInfo.parentHammadde || prod.hammadde,
+      satis_sekli: parentInfo.parentSatisSekli || prod.satis_sekli || rule.defaultSatisSekli || "Adet",
+      moq: parentInfo.parentMOQ || prod.moq || "1.000",
+      fiyat_carpanlari: prod.fiyat_carpanlari || "5k:1.00 / 10k:0.92 / 25k:0.85"
+    });
+    setModalOpen(true);
+  };
+
   // Save Product (Add or Edit)
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -975,13 +1012,40 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
     const targetSira = deleteConfirmProduct.sira_no ? String(deleteConfirmProduct.sira_no).trim() : "";
     const productName = deleteConfirmProduct.urun_adi || targetCode;
 
+    // Sadece özel ölçü ile üretilen master kayıt sistemden silinemez
+    if (isCustomOnlyProduct(deleteConfirmProduct)) {
+      triggerToast(`⚠️ "${productName}" grubu 'Sadece Özel İmalat' statüsündedir ve sistemden silinemez.`);
+      setDeleteConfirmProduct(null);
+      setIsDeletingProduct(false);
+      return;
+    }
+
+    const parentInfo = getParentProductInfo(deleteConfirmProduct.urun_adi, deleteConfirmProduct);
+    const cleanParentTitle = parentInfo.parentTitle.trim().toLowerCase();
+    const cleanTargetCode = targetCode.toLowerCase();
+
+    // Bu ürün grubuna ait başka varyant var mı kontrolü
+    const remainingInGroup = products.filter(p => {
+      const pCode = String(p.urun_kodu || (p as any).sku || (p as any).id || "").trim().toLowerCase();
+      const pSira = String(p.sira_no || "").trim();
+      if (cleanTargetCode && pCode === cleanTargetCode) return false;
+      if (targetSira && pSira === targetSira) return false;
+      
+      const pName = (p.urun_adi || "").trim().toLowerCase();
+      if (pName === cleanParentTitle || pName.includes(cleanParentTitle) || cleanParentTitle.includes(pName)) return true;
+      const pPrefix = pCode.split('-')[0];
+      if (pPrefix && parentInfo.prefix && pPrefix.toLowerCase() === parentInfo.prefix.toLowerCase()) return true;
+      return false;
+    });
+
+    const isLastVariant = remainingInGroup.length === 0;
+
     // Filter helper
     const filterOutProduct = (list: DbProduct[]) => {
-      const cleanCode = targetCode.toLowerCase();
       return list.filter(p => {
         const pCode = String(p.urun_kodu || (p as any).sku || (p as any).id || "").trim().toLowerCase();
         const pSira = String(p.sira_no || "").trim();
-        if (cleanCode && pCode === cleanCode) return false;
+        if (cleanTargetCode && pCode === cleanTargetCode) return false;
         if (targetSira && pSira === targetSira) return false;
         return true;
       });
@@ -1064,8 +1128,30 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
       }
     }
 
+    let masterRecord: DbProduct | null = null;
+    if (isLastVariant) {
+      masterRecord = createMasterCustomRecord(parentInfo, deleteConfirmProduct.sira_no || 999);
+      // Sunucuya Master Özel Üretim kaydını yaz
+      try {
+        await fetch(getApiEndpoint("api/admin/products"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(masterRecord)
+        }).catch(() => {});
+        await fetch(getApiEndpoint("api/admin.php?action=products"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(masterRecord)
+        }).catch(() => {});
+      } catch (e) {}
+    }
+
     // Apply deletion to client state and localStorage
-    const nextProducts = serverUpdatedProducts ? serverUpdatedProducts : filterOutProduct(products);
+    const baseList = serverUpdatedProducts ? serverUpdatedProducts : filterOutProduct(products);
+    const nextProducts = (isLastVariant && masterRecord)
+      ? [masterRecord, ...baseList.filter(p => (p.urun_kodu || (p as any).sku) !== masterRecord!.urun_kodu)]
+      : baseList;
+
     setProducts(nextProducts);
     setGlobalProducts(nextProducts);
     try {
@@ -1076,7 +1162,9 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
     setDeleteConfirmProduct(null);
     setIsDeletingProduct(false);
 
-    if (serverSuccess) {
+    if (isLastVariant) {
+      triggerToast(`✓ "${productName}" varyantı silindi. Ürün grubu "Standart Ölçüsüz (Sadece Özel İmalat)" master kaydı olarak korundu.`);
+    } else if (serverSuccess) {
       triggerToast(`✓ "${productName}" (${targetCode}) veritabanından kalıcı olarak silindi.`);
     } else {
       triggerToast(`⚠️ "${productName}" yerel olarak silindi. Sunucu bağlantısı veya izinlerini kontrol edin.`);
@@ -2156,7 +2244,13 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
                           {prod.urun_adi}
                         </td>
                         <td className="py-3 px-4 text-slate-600 font-mono">
-                          {prod.olculer}
+                          {isCustomOnlyProduct(prod) ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-amber-50 text-amber-800 border border-amber-200 shadow-3xs">
+                              Standart Ölçüsüz (Sadece Özel İmalat)
+                            </span>
+                          ) : (
+                            prod.olculer
+                          )}
                         </td>
                         <td className="py-3 px-4 text-center">
                           {prod.stok_durumu === "Var" ? (
@@ -2196,6 +2290,17 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
                         </td>
                         <td className="py-3 px-4 text-center">
                           <div className="flex items-center justify-center space-x-2">
+                            {/* Standart Ölçü Ekle butonu (Custom Only ise) */}
+                            {isCustomOnlyProduct(prod) && (
+                              <button
+                                onClick={() => handleOpenAddStandardVariant(prod)}
+                                className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 rounded-lg transition-all flex items-center space-x-1 font-bold text-[11px] cursor-pointer"
+                                title="+ Standart Ölçü Ekle"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Yeni Ölçü Ekle</span>
+                              </button>
+                            )}
                             {/* Düzenle (Mavi/Kalem ikonu) */}
                             <button
                               onClick={() => handleOpenEditModal(prod)}
@@ -2206,14 +2311,27 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
                               <span className="hidden sm:inline">Düzenle</span>
                             </button>
                             {/* Sil (Kırmızı/Çöp kutusu ikonu) */}
-                            <button
-                              onClick={() => setDeleteConfirmProduct(prod)}
-                              className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 rounded-lg transition-all flex items-center space-x-1 font-bold text-[11px] cursor-pointer"
-                              title="Ürünü Sil"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Sil</span>
-                            </button>
+                            {isCustomOnlyProduct(prod) ? (
+                              <button
+                                onClick={() => {
+                                  alert(`"${prod.urun_adi}" ürünü sadece özel imalat modundadır ve sistemden silinemez. Dilerseniz yeni standart ölçü ekleyebilirsiniz.`);
+                                }}
+                                className="px-2.5 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-lg flex items-center space-x-1 font-bold text-[11px] cursor-not-allowed opacity-60"
+                                title="Sadece özel ölçülü master ürün silinemez"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Sil</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setDeleteConfirmProduct(prod)}
+                                className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 rounded-lg transition-all flex items-center space-x-1 font-bold text-[11px] cursor-pointer"
+                                title="Ürünü Sil"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Sil</span>
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -3600,7 +3718,19 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
             <div className="space-y-1.5">
               <h4 className="font-extrabold text-base text-slate-900">Ürün Silinsin mi?</h4>
               <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                <strong className="text-rose-600">{deleteConfirmProduct.urun_kodu}</strong> kodlu <strong className="text-slate-900">"{deleteConfirmProduct.urun_adi}"</strong> ürünü veritabanından kalıcı olarak silinecektir.
+                <strong className="text-rose-600">{deleteConfirmProduct.urun_kodu}</strong> kodlu <strong className="text-slate-900">"{deleteConfirmProduct.urun_adi}"</strong> varyantı silinecektir.
+                {products.filter(p => {
+                  const pCode = String(p.urun_kodu || (p as any).sku || "").trim().toLowerCase();
+                  const targetCode = String(deleteConfirmProduct.urun_kodu || (deleteConfirmProduct as any).sku || "").trim().toLowerCase();
+                  if (pCode === targetCode) return false;
+                  const pName = (p.urun_adi || "").trim().toLowerCase();
+                  const cName = (deleteConfirmProduct.urun_adi || "").trim().toLowerCase();
+                  return pName === cName || pName.includes(cName) || cName.includes(pName);
+                }).length === 0 && (
+                  <span className="block mt-2 text-[11px] text-amber-800 font-bold bg-amber-50 p-2 rounded-xl border border-amber-200 text-left">
+                    ℹ Bu son standart varyant olduğu için ana ürün silinmeyecektir; sistemde "Standart Ölçüsüz (Sadece Özel İmalat)" olarak tutulacaktır.
+                  </span>
+                )}
               </p>
             </div>
             <div className="flex space-x-3 pt-2">

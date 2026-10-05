@@ -10,6 +10,7 @@ import ContactTab from "./components/ContactTab";
 import AdminPanel from "./components/AdminPanel";
 import Footer from "./components/Footer";
 import { AppProvider } from "./AppContext";
+import { QuoteProvider } from "./context/QuoteContext";
 import { Product, QuoteSpec } from "./types";
 import { getSubfolderPrefix } from "./utils/urlHelper";
 import { X, Sparkles, ShoppingBag, Trash } from "lucide-react";
@@ -186,7 +187,8 @@ export default function App() {
 
   return (
     <AppProvider>
-      <div className="min-h-screen bg-white text-slate-900 flex flex-col justify-between selection:bg-indigo-600 selection:text-white" id="main-application-container">
+      <QuoteProvider>
+        <div className="min-h-screen bg-white text-slate-900 flex flex-col justify-between selection:bg-indigo-600 selection:text-white" id="main-application-container">
         {/* Universal header navigation (Hidden on Admin Panel) */}
         {currentTab !== "admin" && (
           <Header
@@ -329,7 +331,8 @@ export default function App() {
             </a>
           </div>
         </div>
-      </div>
+        </div>
+      </QuoteProvider>
     </AppProvider>
   );
 }

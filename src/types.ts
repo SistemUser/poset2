@@ -58,6 +58,8 @@ export interface QuoteItem {
   fatura_cebi_dahil?: boolean;
   musteri_notu?: string;
   stok_durumu?: string;
+  hammadde?: string;
+  is_custom_only?: boolean;
 }
 
 export interface ChatMessage {
@@ -109,14 +111,19 @@ export interface CategorySchema {
 export interface DbProduct {
   sira_no: number;
   urun_kodu: string;
+  sku?: string;
   urun_kategorisi: string;
+  kategori?: string;
   urun_adi: string;
   olculer: string;
+  olcu?: string;
   satis_sekli: string;
   moq: string;
   fiyat_carpanlari: string;
   hammadde_turu: string;
+  hammadde?: string;
   kalinlik_seviyesi: string;
+  kalinlik?: string;
   baski_durumu: "Baskılı" | "Baskısız";
   koruk_detayi: string;
   kulp_tipi: string;
@@ -129,7 +136,7 @@ export interface DbProduct {
   termin_suresi: string;
   uyumlu_sektorler: string;
   kullanim_amaci: string;
-  stok_durumu: "Var" | "Siparişle" | "Yok";
+  stok_durumu: "Var" | "Siparişle" | "Yok" | "Sipariş Üzerine Üretim" | string;
   birim_fiyat: number;
   birim_fiyati?: number;
   base_price?: number;
@@ -141,6 +148,7 @@ export interface DbProduct {
   allow_custom_size?: boolean;
   custom_size?: { en: string; boy: string; koruk?: string };
   isPremiumPrice?: boolean;
+  is_custom_only?: boolean;
 }
 
 export interface PriceTierOption {

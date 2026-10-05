@@ -6,6 +6,7 @@ import { TAXONOMY_PRODUCTS, CATEGORIES, TaxonomyProduct } from "../productsData"
 import { useAppConfig } from "../AppContext";
 import { getSubfolderPrefix, getApiEndpoint } from "../utils/urlHelper";
 import { getImgSrc, handleImageError } from "../utils/imageHelper";
+import { isCustomOnlyProduct, getParentProductInfo } from "../utils/customProductHelper";
 
 interface CatalogTabProps {
   onAddToQuoteList: (product: Product) => void;
@@ -203,8 +204,56 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
   }, [dbProducts, formatTL, CATEGORY_LABEL_TO_KEY]);
 
   const allTaxonomyProducts = useMemo(() => {
-    return [...TAXONOMY_PRODUCTS, ...customTaxonomyProducts];
-  }, [customTaxonomyProducts]);
+    if (!Array.isArray(dbProducts) || dbProducts.length === 0) {
+      return [...TAXONOMY_PRODUCTS, ...customTaxonomyProducts];
+    }
+
+    // Map each TAXONOMY_PRODUCT to reflect live dbProducts state
+    const processedTaxonomy = TAXONOMY_PRODUCTS.map(tp => {
+      const cleanTpName = tp.name.trim().toLowerCase();
+      // Find matching items in dbProducts
+      const matchedDb = dbProducts.filter(p => {
+        const pName = (p.urun_adi || "").trim().toLowerCase();
+        return pName === cleanTpName || pName.includes(cleanTpName) || cleanTpName.includes(pName);
+      });
+
+      const customMaster = matchedDb.find(p => isCustomOnlyProduct(p));
+      const standardDbVariants = matchedDb.filter(p => !isCustomOnlyProduct(p));
+
+      // Filter tp.variants to only those that exist in standardDbVariants
+      const liveVariants = tp.variants.filter(v => {
+        return standardDbVariants.some(dbP => dbP.urun_kodu && v.urun_kodu && dbP.urun_kodu.trim().toLowerCase() === v.urun_kodu.trim().toLowerCase());
+      });
+
+      // If all standard variants were deleted or customMaster exists without standard variants
+      if ((customMaster && liveVariants.length === 0) || (matchedDb.length > 0 && liveVariants.length === 0)) {
+        return {
+          ...tp,
+          is_custom_only: true,
+          malzeme: customMaster?.hammadde_turu || customMaster?.hammadde || tp.malzeme,
+          specValue: customMaster?.kalinlik_seviyesi || customMaster?.kalinlik || tp.specValue,
+          stokDurumu: "Siparişle" as any,
+          variants: [] // No standard sizes
+        };
+      }
+
+      // If standard variants exist in DB
+      if (liveVariants.length > 0) {
+        return {
+          ...tp,
+          variants: liveVariants
+        };
+      }
+
+      return tp;
+    });
+
+    // Add purely custom products from dbProducts that don't match any TAXONOMY_PRODUCT
+    const existingTaxonomyNames = new Set(TAXONOMY_PRODUCTS.map(tp => tp.name.trim().toLowerCase()));
+    const extraCustoms = customTaxonomyProducts.filter(cp => !existingTaxonomyNames.has(cp.name.trim().toLowerCase()));
+
+    return [...processedTaxonomy, ...extraCustoms];
+  }, [dbProducts, customTaxonomyProducts]);
 
   const malzemeFilterNodes = [
     { key: "pe", label: "Polietilen (PE) / Plastik" },
@@ -236,13 +285,16 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
   // Run dynamic filter algorithm
   const filteredProducts = useMemo(() => {
     let result = allTaxonomyProducts.filter(p => {
-      // 0. Filter out products where ALL variants are Stokta Yok
-      const inStockVariants = p.variants.filter(v => {
-        const live = dbProducts.find(dbP => dbP.urun_kodu && v.urun_kodu && dbP.urun_kodu.trim().toLowerCase() === v.urun_kodu.trim().toLowerCase());
-        const stok = live?.stok_durumu || v.stok_durumu || "Siparişle";
-        return stok !== "Yok" && stok !== "Stokta Yok";
-      });
-      if (inStockVariants.length === 0) return false;
+      // 0. Filter out products where ALL variants are Stokta Yok (Except is_custom_only products)
+      const isCustomOnly = (p as any).is_custom_only === true || (p.variants || []).length === 0 || isCustomOnlyProduct(p);
+      if (!isCustomOnly) {
+        const inStockVariants = p.variants.filter(v => {
+          const live = dbProducts.find(dbP => dbP.urun_kodu && v.urun_kodu && dbP.urun_kodu.trim().toLowerCase() === v.urun_kodu.trim().toLowerCase());
+          const stok = live?.stok_durumu || v.stok_durumu || "Siparişle";
+          return stok !== "Yok" && stok !== "Stokta Yok";
+        });
+        if (inStockVariants.length === 0) return false;
+      }
 
       // Kullanim category filter match
       if (activeKullanim.length > 0) {
@@ -257,14 +309,20 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
         });
         if (!matchesCategory) return false;
       }
-      // Malzeme filter match
+      // Malzeme filter match - includes custom-only parent products
       if (activeMalzeme.length > 0) {
+        const dbProdMatch = dbProducts.find(dbP => {
+          const pName = (dbP.urun_adi || "").trim().toLowerCase();
+          const prodName = (p.name || "").trim().toLowerCase();
+          return pName === prodName || pName.includes(prodName) || prodName.includes(pName);
+        });
+        const mat = `${p.malzeme} ${dbProdMatch?.hammadde_turu || ""} ${dbProdMatch?.hammadde || ""} ${p.desc || ""} ${p.name || ""}`.toLowerCase();
+        
         const matchesMalzeme = activeMalzeme.some(m => {
-          const mat = p.malzeme.toLowerCase();
-          if (m === "pe" && (mat.includes("pe") || mat.includes("polietilen") || mat.includes("plastik") || mat.includes("opp") || mat.includes("pla"))) return true;
-          if (m === "kraft" && (mat.includes("kraft") || mat.includes("kağıt") || mat.includes("karton") || mat.includes("sülfit") || mat.includes("bristol"))) return true;
+          if (m === "pe" && (mat.includes("pe") || mat.includes("polietilen") || mat.includes("plastik") || mat.includes("opp") || mat.includes("pla") || mat.includes("co-ex") || mat.includes("ldpe"))) return true;
+          if (m === "kraft" && (mat.includes("kraft") || mat.includes("kağıt") || mat.includes("karton") || mat.includes("sülfit") || mat.includes("bristol") || mat.includes("kese"))) return true;
           if (m === "bez" && (mat.includes("tela") || mat.includes("bez") || mat.includes("pamuk") || mat.includes("nonwoven"))) return true;
-          if (m === "endustriyel" && (mat.includes("patpat") || mat.includes("şrink") || mat.includes("film") || mat.includes("laminasyon"))) return true;
+          if (m === "endustriyel" && (mat.includes("patpat") || mat.includes("şrink") || mat.includes("film") || mat.includes("laminasyon") || mat.includes("balonlu"))) return true;
           return false;
         });
         if (!matchesMalzeme) return false;
@@ -530,18 +588,21 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
             {/* Dynamic Grid layout with Image 3 exact card layouts */}
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6" id="catalog-main-grid">
               {paginatedProducts.map((prod) => {
-                const activeVariantCode = selectedVariantCodes[prod.id] || prod.variants[0].urun_kodu;
-                const isCustomSize = activeVariantCode === "custom" || activeVariantCode === "custom_other";
-                const activeVariant = prod.variants.find(v => v.urun_kodu === activeVariantCode) || prod.variants[0];
+                const isProductCustomOnly = (prod as any).is_custom_only === true || (prod.variants || []).length === 0 || isCustomOnlyProduct(prod);
+                const activeVariantCode = isProductCustomOnly 
+                  ? "custom_other" 
+                  : (selectedVariantCodes[prod.id] || prod.variants[0]?.urun_kodu || "custom_other");
+                const isCustomSize = isProductCustomOnly || activeVariantCode === "custom" || activeVariantCode === "custom_other";
+                const activeVariant = prod.variants.find(v => v.urun_kodu === activeVariantCode) || prod.variants[0] || ({} as any);
                 
                 // Live override from Admin Panel / dbProducts - match with trim, lowerCase, and fallback
-                const activeCleanCode = (activeVariant.urun_kodu || "").trim().toLowerCase();
+                const activeCleanCode = (activeVariant?.urun_kodu || "").trim().toLowerCase();
                 const liveDbProd = dbProducts.find(p => {
                   const pCode = (p.urun_kodu || (p as any).sku || "").trim().toLowerCase();
                   return Boolean(pCode) && Boolean(activeCleanCode) && pCode === activeCleanCode;
                 }) || dbProducts.find(p => 
                   Boolean(p.urun_adi) && Boolean(prod.name) && p.urun_adi.trim().toLowerCase() === prod.name.trim().toLowerCase() &&
-                  Boolean(p.olculer) && Boolean(activeVariant.olculer) && p.olculer.trim().toLowerCase() === activeVariant.olculer.trim().toLowerCase()
+                  (isProductCustomOnly || (Boolean(p.olculer) && Boolean(activeVariant?.olculer) && p.olculer.trim().toLowerCase() === activeVariant.olculer.trim().toLowerCase()))
                 );
                 const rawPrice = liveDbProd?.birim_fiyat ?? 
                   liveDbProd?.birim_fiyati ?? 
@@ -551,11 +612,14 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
                   (prod as any)?.price ?? 
                   0;
                 const effectivePrice = typeof rawPrice === 'number' ? rawPrice : (parseFloat(String(rawPrice).replace(',', '.')) || 0);
-                const effectiveCurrency = (liveDbProd?.para_birimi || activeVariant.para_birimi || "TL").toUpperCase();
-                const effectiveStok = isCustomSize ? "Siparişle" : (liveDbProd?.stok_durumu || activeVariant.stok_durumu || "Siparişle");
-                const satisSekli = liveDbProd?.satis_sekli || activeVariant.satis_sekli || "Adet";
-                const baskiDurumu = liveDbProd?.baski_durumu || activeVariant.baski_durumu || "Baskılı";
-                const fiyatCarpanlariStr = liveDbProd?.fiyat_carpanlari || activeVariant.fiyat_carpanlari || "5k:1.00 / 10k:0.92 / 25k:0.85";
+                const effectiveCurrency = (liveDbProd?.para_birimi || activeVariant?.para_birimi || "TL").toUpperCase();
+                // Custom only ürünlerde stok rozeti asla 'Stokta Yok' olamaz, daima 'Sipariş Üzerine Üretim' (mavi)
+                const effectiveStok = (isProductCustomOnly || isCustomSize) 
+                  ? "Siparişle" 
+                  : (liveDbProd?.stok_durumu || activeVariant?.stok_durumu || "Siparişle");
+                const satisSekli = liveDbProd?.satis_sekli || activeVariant?.satis_sekli || "Adet";
+                const baskiDurumu = liveDbProd?.baski_durumu || activeVariant?.baski_durumu || "Baskılı";
+                const fiyatCarpanlariStr = liveDbProd?.fiyat_carpanlari || activeVariant?.fiyat_carpanlari || "5k:1.00 / 10k:0.92 / 25k:0.85";
 
                 const priceTiers = parsePriceMultipliers(fiyatCarpanlariStr, satisSekli);
                 const currentMultiplier = selectedMultipliers[prod.id] !== undefined ? selectedMultipliers[prod.id] : (priceTiers[0]?.multiplier || 1.0);
@@ -563,7 +627,7 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
 
                 const usdRate = Number(settings?.usd_try_rate || settings?.dolar_kuru || 35.0);
                 const finalTLPrice = effectiveCurrency === "USD" ? (baseUnitPrice * usdRate) : baseUnitPrice;
-                const isQuoteOnly = isCustomSize || liveDbProd?.fiyat_aliniz === true || (liveDbProd as any)?.is_quote_only === true || (prod as any)?.fiyat_aliniz === true || !finalTLPrice || finalTLPrice <= 0 || isNaN(finalTLPrice);
+                const isQuoteOnly = isProductCustomOnly || isCustomSize || liveDbProd?.fiyat_aliniz === true || (liveDbProd as any)?.is_quote_only === true || (prod as any)?.fiyat_aliniz === true || !finalTLPrice || finalTLPrice <= 0 || isNaN(finalTLPrice);
 
                 return (
                   <div 
@@ -605,7 +669,7 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
                               key={i}
                               className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider font-mono shadow-xs border ${
                                 b === "Çok Satan" 
-                                  ? "bg-rose-50 text-rose-600 border-rose-100" 
+                                   ? "bg-rose-50 text-rose-600 border-rose-100" 
                                   : b === "Üretime Hazır" 
                                     ? "bg-amber-50 text-amber-600 border-amber-100" 
                                     : "bg-stone-50 text-slate-600 border-slate-200"
@@ -630,13 +694,13 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
 
                         {/* Dropdown Select for variants */}
                         <div className="space-y-1">
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none font-mono">Ölçe Seçimi</span>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none font-mono">Ölçü Seçimi</span>
                           <select
                             value={activeVariantCode}
                             onChange={(e) => setSelectedVariantCodes(prev => ({ ...prev, [prod.id]: e.target.value }))}
                             className="w-full bg-slate-50 border border-slate-200/80 text-xs font-bold text-slate-700 px-3 py-2 rounded-xl focus:bg-white focus:outline-none focus:border-[#0b1c3f] cursor-pointer shadow-3xs"
                           >
-                            {prod.variants.filter(v => {
+                            {!isProductCustomOnly && prod.variants.filter(v => {
                               const live = dbProducts.find(dbP => dbP.urun_kodu && v.urun_kodu && dbP.urun_kodu.trim().toLowerCase() === v.urun_kodu.trim().toLowerCase());
                               const stok = live?.stok_durumu || v.stok_durumu || "Siparişle";
                               return stok !== "Yok" && stok !== "Stokta Yok";
@@ -648,7 +712,7 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
                             <option value="custom_other">⚙ Diğer (Özel Ölçü Belirtiniz...)</option>
                           </select>
 
-                          {/* Mini En/Boy input alanları: "Diğer" seçildiğinde */}
+                          {/* Mini En/Boy/Körük input alanları: "Diğer" seçildiğinde veya sadece özel ölçülü ise varsayılan açık */}
                           {isCustomSize && (
                             <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-2 mt-2">
                               <span className="text-[10px] font-extrabold text-indigo-700 block">Özel Ölçü Belirtiniz (cm)</span>
@@ -793,7 +857,7 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
                         ) : (
                           <div className="pt-1">
                             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-blue-100 text-blue-800 border border-blue-300 shadow-xs">
-                              {isCustomSize ? "ÖZEL İMALAT - TEKLİF ALINIZ" : "Fiyat Alınız"}
+                              {isProductCustomOnly || isCustomSize ? "ÖZEL İMALAT - TEKLİF ALINIZ" : "Fiyat Alınız"}
                             </span>
                           </div>
                         )}
@@ -803,17 +867,17 @@ export default function CatalogTab({ onAddToQuoteList, onCustomizeWithAI, setTab
                       <div className="w-full">
                         <button
                           onClick={() => {
-                            if (isCustomSize) {
+                            if (isCustomSize || isProductCustomOnly) {
                               const cd = cardCustomDims[prod.id];
-                              if (!cd || !cd.en?.trim() || !cd.boy?.trim()) {
-                                alert("Lütfen özel ölçü için en ve boy değerlerini girin");
-                                return;
-                              }
-                              onCustomizeWithAI(`custom:${prod.id}:${cd.en}:${cd.boy}:${cd.koruk || 0}`);
+                              onCustomizeWithAI(`custom:${prod.id}:${cd?.en?.trim() || ""}:${cd?.boy?.trim() || ""}:${cd?.koruk?.trim() || 0}`);
                               setTab("assistant");
                             } else {
-                              const sku = activeVariant.urun_kodu;
-                              onCustomizeWithAI(`sku:${sku}`);
+                              const sku = activeVariant?.urun_kodu || prod.variants[0]?.urun_kodu;
+                              if (sku) {
+                                onCustomizeWithAI(`sku:${sku}`);
+                              } else {
+                                onCustomizeWithAI(`custom:${prod.id}:::0`);
+                              }
                               setTab("assistant");
                             }
                           }}
