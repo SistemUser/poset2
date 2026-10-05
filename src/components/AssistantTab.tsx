@@ -1807,51 +1807,63 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
               {showAdhesivePocketAddon && (
                 <div 
                   onClick={() => setAddAdhesivePocket(!addAdhesivePocket)}
-                  className={`border-2 rounded-2xl p-3.5 mt-3 transition-all duration-300 select-none cursor-pointer text-xs relative overflow-hidden ${
+                  className={`border-2 rounded-2xl p-3.5 mt-3 transition-all duration-300 select-none cursor-pointer text-xs relative overflow-hidden group ${
                     addAdhesivePocket 
                       ? "bg-emerald-50/80 border-emerald-400 shadow-sm ring-2 ring-emerald-500/20" 
                       : "bg-slate-50 border-slate-200/90 text-slate-700 hover:bg-slate-100/80 hover:border-slate-300"
                   }`}
                 >
-                  <div className={`flex items-center justify-between mb-2 pb-1.5 border-b border-dashed ${
+                  <div className={`flex items-center justify-between mb-2.5 pb-1.5 border-b border-dashed ${
                     addAdhesivePocket ? "border-emerald-200" : "border-slate-200/60"
                   }`}>
                     <span className={`text-[10px] font-black tracking-wider uppercase font-mono ${addAdhesivePocket ? "text-emerald-700" : "text-slate-400"}`}>
                       Uyumlu Paket Kombinasyonu
                     </span>
-                    <div className="flex items-center space-x-2">
-                      <span className={`text-[11px] font-bold ${addAdhesivePocket ? "text-emerald-900 font-extrabold" : "text-slate-600"}`}>
-                        {addAdhesivePocket ? "✓ Siparişe Eklendi" : "Siparişime Ekle"}
-                      </span>
-                      <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${
-                        addAdhesivePocket 
-                          ? "bg-emerald-600 border-emerald-600 text-white shadow-xs" 
-                          : "bg-white border-slate-300 text-transparent"
-                      }`}>
-                        <svg className="w-2.5 h-2.5 stroke-current stroke-[3.5]" fill="none" viewBox="0 0 24 24">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      </div>
-                    </div>
+                    <span className={`text-[10px] font-semibold font-mono ${addAdhesivePocket ? "text-emerald-600" : "text-slate-400"}`}>
+                      Ek Ambalaj Çözümü
+                    </span>
                   </div>
 
                   <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center space-x-3 min-w-0">
+                    <div className="flex items-center space-x-3.5 min-w-0">
                       <img 
                         src={IMAGES.adhesivePockets} 
                         alt="Yapışkanlı Fatura Cebi" 
-                        className={`w-10 h-10 rounded-xl object-cover shrink-0 border transition-colors ${
+                        className={`w-11 h-11 rounded-xl object-cover shrink-0 border transition-colors ${
                           addAdhesivePocket ? "border-emerald-200 bg-white" : "border-slate-200/70"
                         }`}
                         referrerPolicy="no-referrer"
                       />
                       <div className="min-w-0">
-                        <h6 className={`font-extrabold text-xs truncate ${addAdhesivePocket ? "text-emerald-950 font-black" : "text-slate-900"}`}>
+                        <h6 className={`font-extrabold text-sm truncate ${addAdhesivePocket ? "text-emerald-950 font-black" : "text-slate-900"}`}>
                           Yapışkanlı Fatura Cebi
                         </h6>
-                        <p className={`text-[10px] font-medium leading-normal ${addAdhesivePocket ? "text-emerald-700" : "text-slate-400"}`}>
+                        <p className={`text-xs font-medium leading-normal mt-0.5 ${addAdhesivePocket ? "text-emerald-700" : "text-slate-500"}`}>
                           Standart Koli & Gönderi Faturası İçin
                         </p>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0">
+                      <div className={`flex items-center space-x-2.5 px-4 py-2.5 rounded-xl transition-all ${
+                        addAdhesivePocket 
+                          ? "bg-emerald-600 text-white shadow-xs font-black" 
+                          : "bg-white border border-slate-300 text-slate-700 group-hover:border-slate-400 font-extrabold shadow-2xs"
+                      }`}>
+                        <span className="text-xs sm:text-[13px]">
+                          {addAdhesivePocket ? "✓ Siparişe Eklendi" : "Siparişime Ekle"}
+                        </span>
+                        <div className={`w-4.5 h-4.5 rounded-md flex items-center justify-center transition-all ${
+                          addAdhesivePocket 
+                            ? "bg-white text-emerald-600" 
+                            : "border border-slate-300 bg-slate-50"
+                        }`}>
+                          {addAdhesivePocket && (
+                            <svg className="w-3 h-3 stroke-current stroke-[3.5]" fill="none" viewBox="0 0 24 24">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
