@@ -21,80 +21,68 @@ interface ComplementaryTag {
   label: string;
   query: string;
   categoryKey?: string;
-  desc?: string;
 }
 
 const COMPLEMENTARY_SEARCH_MAP: Record<string, ComplementaryTag[]> = {
   poset: [
-    { label: "El Geçme Mağaza Poşeti", query: "El Geçme", categoryKey: "plastik_poset", desc: "Butik & Perakende" },
-    { label: "Yumuşak Saplı Poşet", query: "Yumuşak Saplı", categoryKey: "plastik_poset", desc: "Lüks Taşıma" },
-    { label: "Takviyeli Mağaza Poşeti", query: "Takviyeli", categoryKey: "plastik_poset", desc: "Ağır Yük Dayanıklı" },
-    { label: "Baskılı Kargo Poşeti", query: "Baskılı Kargo", categoryKey: "kargo_eticaret", desc: "E-Ticaret & Gönderi" },
-    { label: "Market Atlet Poşet (Hışır)", query: "Atlet", categoryKey: "plastik_poset", desc: "Hafif & Ekonomik" },
-    { label: "Cepli İrsaliye Poşeti", query: "Cepli", categoryKey: "kargo_eticaret", desc: "Fatura Cepli" },
-    { label: "Biyobozunur Doğa Dostu", query: "Biyobozunur", categoryKey: "plastik_poset", desc: "%100 Geri Dönüşümlü" },
-    { label: "Kilitli & Fermuarlı Poşet", query: "Kilitli", categoryKey: "plastik_poset", desc: "Yeniden Kapanabilir" },
+    { label: "El Geçme Mağaza Poşeti", query: "El Geçme", categoryKey: "plastik_poset" },
+    { label: "Yumuşak Saplı Poşet", query: "Yumuşak Saplı", categoryKey: "plastik_poset" },
+    { label: "Takviyeli Mağaza Poşeti", query: "Takviyeli", categoryKey: "plastik_poset" },
+    { label: "Baskılı Kargo Poşeti", query: "Baskılı Kargo", categoryKey: "kargo_eticaret" },
+    { label: "Market Atlet Poşet (Hışır)", query: "Atlet", categoryKey: "plastik_poset" },
+    { label: "Cepli İrsaliye Poşeti", query: "Cepli", categoryKey: "kargo_eticaret" },
+    { label: "Biyobozunur Doğa Dostu", query: "Biyobozunur", categoryKey: "plastik_poset" },
+    { label: "Kilitli & Fermuarlı Poşet", query: "Kilitli", categoryKey: "plastik_poset" },
   ],
   canta: [
-    { label: "Burgu Saplı Kraft Çanta", query: "Burgu Saplı", categoryKey: "kagit_karton", desc: "Doğal & Şık" },
-    { label: "Düz Saplı Kağıt Çanta", query: "Düz Saplı", categoryKey: "kagit_karton", desc: "Paket Servis" },
-    { label: "Lüks Karton Çanta", query: "Lüks Karton", categoryKey: "kagit_karton", desc: "Gofre & Varak Baskı" },
-    { label: "Tela (Nonwoven) Çanta", query: "Tela", categoryKey: "bez_tela", desc: "Uzun Ömürlü Bez" },
-    { label: "Ham Bez (Pamuk) Çanta", query: "Bez Çanta", categoryKey: "bez_tela", desc: "%100 Pamuk Dokuma" },
+    { label: "Burgu Saplı Kraft Çanta", query: "Burgu Saplı", categoryKey: "kagit_karton" },
+    { label: "Düz Saplı Kağıt Çanta", query: "Düz Saplı", categoryKey: "kagit_karton" },
+    { label: "Lüks Karton Çanta", query: "Lüks Karton", categoryKey: "kagit_karton" },
+    { label: "Tela (Nonwoven) Çanta", query: "Tela", categoryKey: "bez_tela" },
+    { label: "Ham Bez (Pamuk) Çanta", query: "Bez Çanta", categoryKey: "bez_tela" },
   ],
   kargo: [
-    { label: "Baskılı (Logolu) Kargo Poşeti", query: "Baskılı Kargo", categoryKey: "kargo_eticaret", desc: "Markaya Özel Baskı" },
-    { label: "Cepli Kendinden İrsaliyeli", query: "Cepli", categoryKey: "kargo_eticaret", desc: "Fatura Bölmeli" },
-    { label: "Standart Baskısız Kargo Poşeti", query: "Standart Baskısız", categoryKey: "kargo_eticaret", desc: "Stoktan Hemen Teslim" },
-    { label: "Balonlu Koruyucu Zarf", query: "Balonlu", categoryKey: "kargo_eticaret", desc: "Darbeye Dayanıklı" },
-    { label: "Kağıt Kargo Poşeti", query: "Kağıt Kargo", categoryKey: "kargo_eticaret", desc: "Ekolojik Kraft Gönderi" },
+    { label: "Baskılı (Logolu) Kargo Poşeti", query: "Baskılı Kargo", categoryKey: "kargo_eticaret" },
+    { label: "Cepli Kendinden İrsaliyeli", query: "Cepli", categoryKey: "kargo_eticaret" },
+    { label: "Standart Baskısız Kargo Poşeti", query: "Standart Baskısız", categoryKey: "kargo_eticaret" },
+    { label: "Balonlu Koruyucu Zarf", query: "Balonlu", categoryKey: "kargo_eticaret" },
+    { label: "Kağıt Kargo Poşeti", query: "Kağıt Kargo", categoryKey: "kargo_eticaret" },
   ],
   magaza: [
-    { label: "El Geçme Mağaza Poşeti", query: "El Geçme", categoryKey: "plastik_poset", desc: "Perakende Klasiği" },
-    { label: "Takviyeli Saplı Poşet", query: "Takviyeli", categoryKey: "plastik_poset", desc: "Ekstra Güçlendirilmiş" },
-    { label: "Yumuşak Saplı Poşet", query: "Yumuşak Saplı", categoryKey: "plastik_poset", desc: "Butik & Tekstil" },
-    { label: "Lüks Karton Mağaza Çantası", query: "Lüks Karton", categoryKey: "kagit_karton", desc: "Prestijli Çözüm" },
+    { label: "El Geçme Mağaza Poşeti", query: "El Geçme", categoryKey: "plastik_poset" },
+    { label: "Takviyeli Saplı Poşet", query: "Takviyeli", categoryKey: "plastik_poset" },
+    { label: "Yumuşak Saplı Poşet", query: "Yumuşak Saplı", categoryKey: "plastik_poset" },
+    { label: "Lüks Karton Mağaza Çantası", query: "Lüks Karton", categoryKey: "kagit_karton" },
   ],
   plastik: [
-    { label: "El Geçmeli Plastik Poşet", query: "El Geçme", categoryKey: "plastik_poset", desc: "LDPE Yumuşak Doku" },
-    { label: "Takviyeli Plastik Poşet", query: "Takviyeli", categoryKey: "plastik_poset", desc: "Takviyeli Tutacaklı" },
-    { label: "Atlet Plastik Poşet (Hışır)", query: "Atlet", categoryKey: "plastik_poset", desc: "HDPE Yüksek Mukavemet" },
-    { label: "Jelatin & OPP Poşet", query: "Jelatin", categoryKey: "plastik_poset", desc: "Kristal Şeffaflık" },
+    { label: "El Geçmeli Plastik Poşet", query: "El Geçme", categoryKey: "plastik_poset" },
+    { label: "Takviyeli Plastik Poşet", query: "Takviyeli", categoryKey: "plastik_poset" },
+    { label: "Atlet Plastik Poşet (Hışır)", query: "Atlet", categoryKey: "plastik_poset" },
+    { label: "Jelatin & OPP Poşet", query: "Jelatin", categoryKey: "plastik_poset" },
   ],
   el: [
-    { label: "El Geçme Mağaza Poşeti", query: "El Geçme", categoryKey: "plastik_poset", desc: "Butik & Perakende" },
-    { label: "Takviyeli El Geçme Poşet", query: "Takviyeli", categoryKey: "plastik_poset", desc: "Dayanıklı Sap" },
-    { label: "Baskılı El Geçme Poşet", query: "El Geçme", categoryKey: "plastik_poset", desc: "Logolu İmalat" },
+    { label: "El Geçme Mağaza Poşeti", query: "El Geçme", categoryKey: "plastik_poset" },
+    { label: "Takviyeli El Geçme Poşet", query: "Takviyeli", categoryKey: "plastik_poset" },
+    { label: "Baskılı El Geçme Poşet", query: "El Geçme", categoryKey: "plastik_poset" },
   ],
   kraft: [
-    { label: "Burgu Saplı Kraft Çanta", query: "Burgu Saplı", categoryKey: "kagit_karton", desc: "Beyaz & Esmer Kraft" },
-    { label: "Düz Saplı Kraft Çanta", query: "Düz Saplı", categoryKey: "kagit_karton", desc: "Paket Servis" },
-    { label: "Kese Kağıtları", query: "Kese", categoryKey: "kagit_karton", desc: "Fırın & Kuruyemiş" },
+    { label: "Burgu Saplı Kraft Çanta", query: "Burgu Saplı", categoryKey: "kagit_karton" },
+    { label: "Düz Saplı Kraft Çanta", query: "Düz Saplı", categoryKey: "kagit_karton" },
+    { label: "Kese Kağıtları", query: "Kese", categoryKey: "kagit_karton" },
   ],
   kese: [
-    { label: "Kese Kağıtları", query: "Kese", categoryKey: "kagit_karton", desc: "Doğal Kraft Ambalaj" },
-    { label: "Pencereli Kraft Kese", query: "Kraft", categoryKey: "kagit_karton", desc: "Gıda & Baharat" },
+    { label: "Kese Kağıtları", query: "Kese", categoryKey: "kagit_karton" },
+    { label: "Pencereli Kraft Kese", query: "Kraft", categoryKey: "kagit_karton" },
   ],
   bez: [
-    { label: "Tela (Nonwoven) Çanta", query: "Tela", categoryKey: "bez_tela", desc: "Fuar & Promosyon" },
-    { label: "Ham Bez (Pamuk) Çanta", query: "Bez Çanta", categoryKey: "bez_tela", desc: "%100 Pamuklu" },
+    { label: "Tela (Nonwoven) Çanta", query: "Tela", categoryKey: "bez_tela" },
+    { label: "Ham Bez (Pamuk) Çanta", query: "Bez Çanta", categoryKey: "bez_tela" },
   ],
   balonlu: [
-    { label: "Balonlu Kargo Zarfları", query: "Balonlu", categoryKey: "kargo_eticaret", desc: "Hava Kabarcıklı Koruma" },
-    { label: "Balonlu Patpat Naylonlar", query: "Patpat", categoryKey: "koruyucu_endustriyel", desc: "Rulo Ambalaj Malzemesi" },
+    { label: "Balonlu Kargo Zarfları", query: "Balonlu", categoryKey: "kargo_eticaret" },
+    { label: "Balonlu Patpat Naylonlar", query: "Patpat", categoryKey: "koruyucu_endustriyel" },
   ]
 };
-
-const DEFAULT_POPULAR_TAGS: ComplementaryTag[] = [
-  { label: "El Geçme Mağaza Poşeti", query: "El Geçme", categoryKey: "plastik_poset", desc: "Perakende" },
-  { label: "Baskılı Kargo Poşeti", query: "Baskılı Kargo", categoryKey: "kargo_eticaret", desc: "E-Ticaret" },
-  { label: "Yumuşak Saplı Poşet", query: "Yumuşak Saplı", categoryKey: "plastik_poset", desc: "Butik" },
-  { label: "Burgu Saplı Kraft Çanta", query: "Burgu Saplı", categoryKey: "kagit_karton", desc: "Kraft" },
-  { label: "Market Atlet Poşet", query: "Atlet", categoryKey: "plastik_poset", desc: "Hışır" },
-  { label: "Cepli Kargo Poşeti", query: "Cepli", categoryKey: "kargo_eticaret", desc: "İrsaliyeli" },
-  { label: "Lüks Karton Çanta", query: "Lüks Karton", categoryKey: "kagit_karton", desc: "Prestij" },
-  { label: "Tela (Nonwoven) Çanta", query: "Tela", categoryKey: "bez_tela", desc: "Bez Çanta" },
-];
 
 interface HomeTabProps {
   onAnalyzePrompt: (prompt: string) => void;
@@ -208,7 +196,7 @@ export default function HomeTab({ onAnalyzePrompt, setTab, onSearchCatalog }: Ho
   const complementaryTags = useMemo(() => {
     const norm = normalizeTr(searchInput);
     if (!norm) {
-      return DEFAULT_POPULAR_TAGS;
+      return [];
     }
 
     const results: ComplementaryTag[] = [];
@@ -234,8 +222,7 @@ export default function HomeTab({ onAnalyzePrompt, setTab, onSearchCatalog }: Ho
         results.push({
           label: tp.name,
           query: tp.name,
-          categoryKey: tp.categoryKey,
-          desc: tp.categoryLabel
+          categoryKey: tp.categoryKey
         });
       }
     });
@@ -247,7 +234,7 @@ export default function HomeTab({ onAnalyzePrompt, setTab, onSearchCatalog }: Ho
   const matchingProducts = useMemo(() => {
     const norm = normalizeTr(searchInput);
     if (!norm) {
-      return TAXONOMY_PRODUCTS.slice(0, 4);
+      return [];
     }
 
     return TAXONOMY_PRODUCTS.filter(tp => {
@@ -408,10 +395,13 @@ export default function HomeTab({ onAnalyzePrompt, setTab, onSearchCatalog }: Ho
                 <input
                   type="text"
                   value={searchInput}
-                  onFocus={() => setIsDropdownOpen(true)}
+                  onFocus={() => {
+                    if (searchInput.trim().length > 0) setIsDropdownOpen(true);
+                  }}
                   onChange={(e) => {
-                    setSearchInput(e.target.value);
-                    if (!isDropdownOpen) setIsDropdownOpen(true);
+                    const val = e.target.value;
+                    setSearchInput(val);
+                    setIsDropdownOpen(val.trim().length > 0);
                   }}
                   placeholder="Hızlı ürün veya ölçü arayın... (Örn: poşet, çanta, kargo, el geçme, kraft)"
                   className="w-full bg-transparent border-none text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-0 p-1 font-medium"
@@ -421,7 +411,7 @@ export default function HomeTab({ onAnalyzePrompt, setTab, onSearchCatalog }: Ho
                     type="button"
                     onClick={() => {
                       setSearchInput("");
-                      setIsDropdownOpen(true);
+                      setIsDropdownOpen(false);
                     }}
                     className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-full transition-colors shrink-0 cursor-pointer"
                     title="Temizle"
@@ -442,40 +432,37 @@ export default function HomeTab({ onAnalyzePrompt, setTab, onSearchCatalog }: Ho
             </form>
 
             {/* Floating Autocomplete & Complementary Dropdown */}
-            {isDropdownOpen && (
+            {isDropdownOpen && searchInput.trim().length > 0 && (complementaryTags.length > 0 || matchingProducts.length > 0) && (
               <div 
                 className="absolute top-full left-0 right-0 mt-2.5 bg-white/98 backdrop-blur-xl border border-slate-200/90 shadow-2xl rounded-3xl p-4 sm:p-5 text-left z-50 max-h-[78vh] overflow-y-auto divide-y divide-slate-100 text-slate-800 animate-in fade-in zoom-in-95 duration-150"
                 id="search-autocomplete-dropdown"
               >
                 {/* 1. Kısım: Tamamlayıcı Seçenekler (Chips) */}
-                <div className="pb-3.5">
-                  <div className="flex items-center justify-between mb-2.5">
-                    <div className="flex items-center space-x-1.5 text-xs font-black text-slate-800 tracking-tight">
-                      <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                      <span>{searchInput.trim() ? `"${searchInput}" İçin Tamamlayıcı Seçenekler:` : "Popüler Seçenekler ve Çeşitler:"}</span>
+                {complementaryTags.length > 0 && (
+                  <div className="pb-3.5">
+                    <div className="flex items-center justify-between mb-2.5">
+                      <div className="flex items-center space-x-1.5 text-xs font-black text-slate-800 tracking-tight">
+                        <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                        <span>"{searchInput.trim()}" ile İlgili Seçenekler:</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400 font-semibold hidden sm:inline">Tıklayarak inceleyin</span>
                     </div>
-                    <span className="text-[10px] font-mono text-slate-400 font-semibold hidden sm:inline">Tıklayarak inceleyin</span>
-                  </div>
 
-                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                    {complementaryTags.map((tag, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => handleSelectTag(tag)}
-                        className="group px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-blue-50/80 border border-slate-200/80 hover:border-blue-300 text-slate-700 hover:text-blue-700 text-xs font-bold flex items-center space-x-1.5 transition-all shadow-2xs hover:shadow-sm cursor-pointer"
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 group-hover:scale-125 transition-transform" />
-                        <span>{tag.label}</span>
-                        {tag.desc && (
-                          <span className="text-[10px] font-medium text-slate-400 group-hover:text-blue-600 transition-colors">
-                            • {tag.desc}
-                          </span>
-                        )}
-                      </button>
-                    ))}
+                    <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                      {complementaryTags.map((tag, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleSelectTag(tag)}
+                          className="group px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-blue-50/80 border border-slate-200/80 hover:border-blue-300 text-slate-700 hover:text-blue-700 text-xs font-bold flex items-center space-x-1.5 transition-all shadow-2xs hover:shadow-sm cursor-pointer"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 group-hover:scale-125 transition-transform" />
+                          <span>{tag.label}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* 2. Kısım: Eşleşen Ürünler */}
                 {matchingProducts.length > 0 && (
@@ -517,11 +504,9 @@ export default function HomeTab({ onAnalyzePrompt, setTab, onSearchCatalog }: Ho
                                 </span>
                               </div>
                               <div className="flex items-center space-x-2 text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                                <span className="font-semibold text-slate-600">{prod.categoryLabel}</span>
-                                <span>•</span>
                                 <span>{prod.malzeme}</span>
                                 <span>•</span>
-                                <span className="text-indigo-600 font-bold">{prod.variants.length} Ölçü</span>
+                                <span className="text-indigo-600 font-bold">{prod.variants.length} Ölçü Seçeneği</span>
                               </div>
                             </div>
                           </div>
@@ -549,30 +534,7 @@ export default function HomeTab({ onAnalyzePrompt, setTab, onSearchCatalog }: Ho
                   </div>
                 )}
 
-                {/* 3. Kısım: İlgili Kategoriler (Varsa) */}
-                {matchingCategories.length > 0 && (
-                  <div className="py-3">
-                    <div className="flex items-center space-x-1.5 text-xs font-black text-slate-800 mb-2">
-                      <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>İlgili Kategoriler</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {matchingCategories.map((cat) => (
-                        <button
-                          key={cat.key}
-                          type="button"
-                          onClick={() => handleViewCategory(cat.key)}
-                          className="text-xs font-bold text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100 border border-indigo-200/80 px-3 py-1.5 rounded-xl transition-colors cursor-pointer flex items-center space-x-1"
-                        >
-                          <span>{cat.label}</span>
-                          <span className="font-mono text-[10px] text-indigo-500">({cat.count} Çeşit) →</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* 4. Kısım: Tüm Sonuçları Gör Alt Butonu */}
+                {/* Alt Çubuk: Tüm Sonuçları Gör Alt Butonu */}
                 <div className="pt-3">
                   <button
                     type="button"
@@ -589,9 +551,7 @@ export default function HomeTab({ onAnalyzePrompt, setTab, onSearchCatalog }: Ho
                     <div className="flex items-center space-x-2">
                       <Search className="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform" />
                       <span>
-                        {searchInput.trim() 
-                          ? `"${searchInput}" ile ilgili tüm ambalajları katalogda listele`
-                          : "Tüm ambalaj kataloğunu incele"}
+                        "{searchInput.trim()}" ile ilgili tüm ambalajları katalogda listele
                       </span>
                     </div>
                     <span className="flex items-center space-x-1 text-blue-300 font-mono text-[11px]">

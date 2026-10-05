@@ -1854,11 +1854,6 @@ export default function AssistantTab({ initialPrompt, onClearInitialPrompt, onPl
                         </p>
                       </div>
                     </div>
-                    <span className={`font-mono font-extrabold text-xs shrink-0 ${
-                      addAdhesivePocket ? "text-emerald-700 bg-emerald-100/80 px-2 py-1 rounded-lg border border-emerald-200" : "text-slate-600"
-                    }`}>
-                      +₺0.24 / Adet
-                    </span>
                   </div>
                 </div>
               )}
