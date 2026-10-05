@@ -3145,11 +3145,12 @@ app.post("/api/quote", async (req, res) => {
   try {
     const { action, customer, items } = req.body || {};
     if (action === "submit_rfq") {
-      const to = process.env.SMTP_RECIPIENT || "info@poset.com";
+      const to = req.body?.recipient_email || process.env.SMTP_RECIPIENT || "info@poset.com";
       const custName = customer?.name || "Belirtilmedi";
       const custPhone = customer?.phone || "Belirtilmedi";
       const custCompany = customer?.company || "Belirtilmedi";
       const custEmail = customer?.email || "Belirtilmedi";
+      const custMonthly = customer?.monthlyConsumption || "Belirtilmedi";
 
       const subject = `Yeni Teklif Talebi (poset.com) - ${custName}`;
 
@@ -3166,6 +3167,7 @@ th { background-color: #0b1c3f; color: white; }
 <li><strong>Firma / Marka:</strong> ${custCompany}</li>
 <li><strong>Telefon:</strong> ${custPhone}</li>
 <li><strong>E-posta:</strong> ${custEmail}</li>
+<li><strong>Aylık Ortalama Tüketim:</strong> ${custMonthly}</li>
 </ul>
 <h3>Talep Edilen Ürünler</h3>
 <table>

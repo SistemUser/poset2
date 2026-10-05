@@ -21,12 +21,14 @@ $gemini_api_key = getenv('GEMINI_API_KEY') ?: '';
 $input = json_decode(file_get_contents('php://input'), true);
 
 function sendSmtpEmail($to, $subject, $body, $replyToEmail = '') {
-    $smtpHost = 'ssl://server.reksa.net';
-    $smtpPort = 465;
-    $username = 'info@reksa.net';
-    $password = 'z4DdYyvU32XD';
-    $from = 'info@reksa.net';
+    $rawHost = getenv('SMTP_HOST') ?: 'server.reksa.net';
+    $smtpPort = getenv('SMTP_PORT') ? intval(getenv('SMTP_PORT')) : 465;
+    $username = getenv('SMTP_USER') ?: 'info@reksa.net';
+    $password = getenv('SMTP_PASS') ?: 'z4DdYyvU32XD';
+    $from = $username;
     $fromName = 'Poset.com Teklif Sistemi';
+
+    $smtpHost = (strpos($rawHost, '://') === false && $smtpPort == 465) ? 'ssl://' . $rawHost : $rawHost;
 
     $context = stream_context_create([
         'ssl' => [
@@ -112,7 +114,9 @@ function sendSmtpEmail($to, $subject, $body, $replyToEmail = '') {
 }
 
 if (isset($input['action']) && $input['action'] === 'submit_rfq') {
-    $to = 'info@poset.com';
+    $to = !empty($input['recipient_email']) && filter_var($input['recipient_email'], FILTER_VALIDATE_EMAIL)
+        ? $input['recipient_email']
+        : (getenv('SMTP_RECIPIENT') ?: 'info@poset.com');
     $customer = isset($input['customer']) ? $input['customer'] : [];
     $items = isset($input['items']) ? $input['items'] : [];
 
@@ -120,6 +124,7 @@ if (isset($input['action']) && $input['action'] === 'submit_rfq') {
     $custPhone = isset($customer['phone']) ? htmlspecialchars($customer['phone']) : 'Belirtilmedi';
     $custCompany = isset($customer['company']) ? htmlspecialchars($customer['company']) : 'Belirtilmedi';
     $custEmail = isset($customer['email']) ? htmlspecialchars($customer['email']) : 'Belirtilmedi';
+    $custMonthly = isset($customer['monthlyConsumption']) ? htmlspecialchars($customer['monthlyConsumption']) : 'Belirtilmedi';
 
     $subject = "Yeni Teklif Talebi (poset.com) - " . $custName;
 
@@ -136,6 +141,7 @@ if (isset($input['action']) && $input['action'] === 'submit_rfq') {
     $body .= "<li><strong>Firma / Marka:</strong> {$custCompany}</li>";
     $body .= "<li><strong>Telefon:</strong> {$custPhone}</li>";
     $body .= "<li><strong>E-posta:</strong> {$custEmail}</li>";
+    $body .= "<li><strong>Aylık Ortalama Tüketim:</strong> {$custMonthly}</li>";
     $body .= "</ul>";
 
     $body .= "<h3>Talep Edilen Ürünler</h3>";
@@ -169,7 +175,7 @@ if (isset($input['action']) && $input['action'] === 'submit_rfq') {
 
     echo json_encode([
         'success' => true,
-        'message' => 'Teklif talebiniz info@poset.com adresine başarıyla iletildi.',
+        'message' => "Teklif talebiniz {$to} adresine başarıyla iletildi.",
         'recipient' => $to,
         'smtp_sent' => $sent
     ]);
