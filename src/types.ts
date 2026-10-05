@@ -265,5 +265,31 @@ export interface Article {
   seo?: ArticleSeo;
   geo_ai?: ArticleGeoAi;
 }
+export interface RfqSettings {
+  whatsappNumber: string;             // Varsayılan: '905424086160'
+  notificationEmail: string;          // Varsayılan: 'info@reksa.net'
+  showMonthlyConsumption: boolean;    // Varsayılan: true
+  requireMonthlyConsumption: boolean; // Varsayılan: false
+  taxNote: string;                    // Varsayılan: 'KDV Hariç'
+  validityNote: string;               // Varsayılan: 'Fiyatlarımız 15 gün geçerlidir.'
+  submitButtonText: string;           // Varsayılan: 'Teklif Talebini Gönder'
+}
 
+export const DEFAULT_RFQ_SETTINGS: RfqSettings = {
+  whatsappNumber: '905424086160',
+  notificationEmail: 'info@reksa.net',
+  showMonthlyConsumption: true,
+  requireMonthlyConsumption: false,
+  taxNote: 'KDV Hariç',
+  validityNote: 'Fiyatlarımız 15 gün geçerlidir.',
+  submitButtonText: 'Teklif Talebini Gönder'
+};
 
+export interface QuoteFormData {
+  name: string;
+  company?: string;
+  monthlyConsumption?: string;
+  phone: string;
+  email: string;
+  notes?: string;
+}

@@ -10,7 +10,7 @@ import ContactTab from "./components/ContactTab";
 import AdminPanel from "./components/AdminPanel";
 import Footer from "./components/Footer";
 import { AppProvider } from "./AppContext";
-import { QuoteProvider } from "./context/QuoteContext";
+import { QuoteProvider, useQuote } from "./context/QuoteContext";
 import { Product, QuoteSpec } from "./types";
 import { getSubfolderPrefix } from "./utils/urlHelper";
 import { X, Sparkles, ShoppingBag, Trash } from "lucide-react";
@@ -298,41 +298,50 @@ export default function App() {
         )}
 
         {/* Floating Action WhatsApp Support Badge - Positioned alt-sağ corner exactly as in the reference screenshot */}
-        <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-center space-y-3" id="floating-support-container">
-          {/* Soft greeting bubble next to the icon tooltipped - cursor interactive hover:opacity-0 to prevent blocking the content underneath */}
-          <div className="hidden sm:block absolute right-16 bottom-2 whitespace-nowrap bg-white border border-slate-100 text-[11.5px] font-bold text-slate-700 py-1.5 px-3.5 rounded-full shadow-lg pointer-events-auto hover:opacity-0 transition-all duration-300 ease-in-out cursor-pointer select-none animate-bounce" title="Altındaki yazıları okumak için fareyle üzerine gelebilirsiniz">
-            <span className="text-[#25D366]">●</span> Müşteri Destek Grubu
-          </div>
-
-          {/* WhatsApp Button Wrapper to align absolute under-glow waves */}
-          <div className="relative">
-            {/* Breathing soft glow halo */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-[#25D366]/40 blur-md animate-pulse pointer-events-none -z-10" />
-            
-            {/* Continuous expanding ripple wave ring */}
-            <div className="absolute top-0 left-0 w-14 h-14 rounded-full bg-[#25D366]/50 animate-ping pointer-events-none -z-10" style={{ animationDuration: '2.5s' }} />
-            
-            <a 
-              href="https://wa.me/905322153403" 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              id="whatsapp-fixed-trigger"
-              className="w-14 h-14 bg-[#25D366] text-white rounded-full flex items-center justify-center shadow-xl shadow-emerald-600/30 transition-transform duration-300 hover:scale-110 active:scale-95 cursor-pointer relative z-10"
-              title="Bizimle WhatsApp Üzerinden İletişime Geçin"
-            >
-              {/* Inner Classic WhatsApp Logo in white */}
-              <svg 
-                className="w-7.5 h-7.5 fill-current" 
-                viewBox="0 0 24 24" 
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path d="M12.004 2C6.48 2 2 6.48 2 12C2 13.9 2.53 15.68 3.45 17.2L2 22L6.96 20.65C8.42 21.52 10.13 22 12.004 22C17.528 22 22.008 17.52 22.008 12C22.008 6.48 17.528 2 12.004 2ZM17.144 16.59C16.924 17.21 16.034 17.75 15.394 17.9C14.864 18.03 14.184 18.12 11.834 17.15C8.834 15.91 6.894 12.87 6.744 12.67C6.594 12.47 5.484 11 5.484 9.48C5.484 7.96 6.254 7.22 6.544 6.92C6.774 6.69 7.154 6.58 7.514 6.58C7.634 6.58 7.744 6.59 7.844 6.59C8.134 6.6 8.284 6.62 8.474 7.07C8.714 7.65 9.304 9.08 9.374 9.23C9.444 9.38 9.514 9.58 9.414 9.78C9.314 9.98 9.234 10.08 9.084 10.25C8.934 10.42 8.794 10.55 8.644 10.73C8.504 10.89 8.344 11.06 8.524 11.37C8.704 11.67 9.324 12.69 10.244 13.51C11.434 14.57 12.414 14.91 12.734 15.05C13.054 15.19 13.244 15.16 13.424 14.95C13.604 14.74 14.214 14.03 14.434 13.72C14.654 13.41 14.874 13.46 15.174 13.57C15.474 13.68 17.074 14.47 17.404 14.63C17.734 14.79 17.954 14.87 18.034 15.01C18.114 15.15 18.114 15.82 17.894 16.44L17.144 16.59Z"/>
-              </svg>
-            </a>
-          </div>
-        </div>
+        <FloatingWhatsAppBadge />
         </div>
       </QuoteProvider>
     </AppProvider>
   );
 }
+
+const FloatingWhatsAppBadge: React.FC = () => {
+  const { rfqSettings } = useQuote();
+  const phone = (rfqSettings?.whatsappNumber || "905424086160").replace(/[^0-9]/g, "");
+
+  return (
+    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-center space-y-3" id="floating-support-container">
+      {/* Soft greeting bubble next to the icon tooltipped */}
+      <div className="hidden sm:block absolute right-16 bottom-2 whitespace-nowrap bg-white border border-slate-100 text-[11.5px] font-bold text-slate-700 py-1.5 px-3.5 rounded-full shadow-lg pointer-events-auto hover:opacity-0 transition-all duration-300 ease-in-out cursor-pointer select-none animate-bounce" title="Altındaki yazıları okumak için fareyle üzerine gelebilirsiniz">
+        <span className="text-[#25D366]">●</span> Müşteri Destek Grubu
+      </div>
+
+      {/* WhatsApp Button Wrapper to align absolute under-glow waves */}
+      <div className="relative">
+        {/* Breathing soft glow halo */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-[#25D366]/40 blur-md animate-pulse pointer-events-none -z-10" />
+        
+        {/* Continuous expanding ripple wave ring */}
+        <div className="absolute top-0 left-0 w-14 h-14 rounded-full bg-[#25D366]/50 animate-ping pointer-events-none -z-10" style={{ animationDuration: '2.5s' }} />
+        
+        <a 
+          href={`https://wa.me/${phone}`} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          id="whatsapp-fixed-trigger"
+          className="w-14 h-14 bg-[#25D366] text-white rounded-full flex items-center justify-center shadow-xl shadow-emerald-600/30 transition-transform duration-300 hover:scale-110 active:scale-95 cursor-pointer relative z-10"
+          title="Bizimle WhatsApp Üzerinden İletişime Geçin"
+        >
+          {/* Inner Classic WhatsApp Logo in white */}
+          <svg 
+            className="w-7.5 h-7.5 fill-current" 
+            viewBox="0 0 24 24" 
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path d="M12.004 2C6.48 2 2 6.48 2 12C2 13.9 2.53 15.68 3.45 17.2L2 22L6.96 20.65C8.42 21.52 10.13 22 12.004 22C17.528 22 22.008 17.52 22.008 12C22.008 6.48 17.528 2 12.004 2ZM17.144 16.59C16.924 17.21 16.034 17.75 15.394 17.9C14.864 18.03 14.184 18.12 11.834 17.15C8.834 15.91 6.894 12.87 6.744 12.67C6.594 12.47 5.484 11 5.484 9.48C5.484 7.96 6.254 7.22 6.544 6.92C6.774 6.69 7.154 6.58 7.514 6.58C7.634 6.58 7.744 6.59 7.844 6.59C8.134 6.6 8.284 6.62 8.474 7.07C8.714 7.65 9.304 9.08 9.374 9.23C9.444 9.38 9.514 9.58 9.414 9.78C9.314 9.98 9.234 10.08 9.084 10.25C8.934 10.42 8.794 10.55 8.644 10.73C8.504 10.89 8.344 11.06 8.524 11.37C8.704 11.67 9.324 12.69 10.244 13.51C11.434 14.57 12.414 14.91 12.734 15.05C13.054 15.19 13.244 15.16 13.424 14.95C13.604 14.74 14.214 14.03 14.434 13.72C14.654 13.41 14.874 13.46 15.174 13.57C15.474 13.68 17.074 14.47 17.404 14.63C17.734 14.79 17.954 14.87 18.034 15.01C18.114 15.15 18.114 15.82 17.894 16.44L17.144 16.59Z"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  );
+};

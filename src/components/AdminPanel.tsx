@@ -5,9 +5,9 @@ import {
   Save, Check, AlertCircle, ArrowLeft, Key, Clock, Package, 
   ShieldCheck, Tag, ChevronLeft, ChevronRight, X, Lock, User, 
   Eye, EyeOff, LogOut, ChevronDown, ChevronUp, Layers, BookOpen,
-  Globe, Bot, Sparkles, CheckCircle2, Menu
+  Globe, Bot, Sparkles, CheckCircle2, Menu, Phone, Mail
 } from "lucide-react";
-import { AppSettings, DbProduct, CategorySchema, Article } from "../types";
+import { AppSettings, DbProduct, CategorySchema, Article, RfqSettings, DEFAULT_RFQ_SETTINGS } from "../types";
 import { useAppConfig } from "../AppContext";
 import { getApiEndpoint } from "../utils/urlHelper";
 import { 
@@ -216,6 +216,30 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
   const [securityNewPasswordConfirm, setSecurityNewPasswordConfirm] = useState("");
   const [showSecurityPasswords, setShowSecurityPasswords] = useState(false);
   const [isSavingSecurity, setIsSavingSecurity] = useState(false);
+
+  // Teklif Formu & İletişim Ayarları State
+  const [rfqSettings, setRfqSettings] = useState<RfqSettings>(() => {
+    try {
+      const saved = localStorage.getItem("poset_rfq_settings");
+      if (saved) return { ...DEFAULT_RFQ_SETTINGS, ...JSON.parse(saved) };
+    } catch (e) {}
+    return DEFAULT_RFQ_SETTINGS;
+  });
+  const [isSavingRfq, setIsSavingRfq] = useState(false);
+
+  const handleSaveRfqSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingRfq(true);
+    try {
+      localStorage.setItem("poset_rfq_settings", JSON.stringify(rfqSettings));
+      window.dispatchEvent(new Event("rfq_settings_updated"));
+      triggerToast("✓ Teklif Formu & İletişim Ayarları başarıyla kaydedildi.");
+    } catch (err) {
+      alert("Ayarlar kaydedilirken hata oluştu.");
+    } finally {
+      setIsSavingRfq(false);
+    }
+  };
 
   // Table filters & Pagination state
   const [searchQuery, setSearchQuery] = useState("");
@@ -2420,107 +2444,113 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
 
         {/* SECTION 6: ADMİN GİRİŞ & GÜVENLİK AYARLARI */}
         {activeAdminSubTab === "security" && (
-          <div className="bg-white border border-slate-200/80 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center">
-                  <ShieldCheck className="w-5 h-5 text-indigo-600" />
-                </div>
-                <div>
-                  <h2 className="font-extrabold text-lg text-slate-900">Admin Giriş & Güvenlik Ayarları</h2>
-                  <p className="text-xs text-slate-500 font-medium">Yönetim paneline giriş kullanıcı adınızı ve şifrenizi güvenli şekilde güncelleyin.</p>
-                </div>
-              </div>
-              <span className="bg-slate-100 text-slate-700 text-xs font-mono font-bold px-3 py-1 rounded-full border border-slate-200 self-start sm:self-auto">
-                Güvenlik Seviyesi: Yüksek
-              </span>
-            </div>
-
-            <form onSubmit={handleSaveSecuritySettings} className="max-w-2xl space-y-5">
-              {/* Username Field */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
-                  Yönetici Kullanıcı Adı
-                </label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                  <input
-                    type="text"
-                    value={securityUsername}
-                    onChange={(e) => setSecurityUsername(e.target.value)}
-                    placeholder="Kullanıcı adı"
-                    required
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-4 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
-                  />
-                </div>
-                <p className="text-[11px] text-slate-500 font-medium">Giriş yaparken kullanacağınız kullanıcı adı (Varsayılan: poset).</p>
-              </div>
-
-              {/* Current Password Field */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
-                  Mevcut Şifreniz <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                  <input
-                    type={showSecurityPasswords ? "text" : "password"}
-                    value={securityCurrentPassword}
-                    onChange={(e) => setSecurityCurrentPassword(e.target.value)}
-                    placeholder="Mevcut şifrenizi girin"
-                    required
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-10 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowSecurityPasswords(!showSecurityPasswords)}
-                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    {showSecurityPasswords ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                <p className="text-[11px] text-slate-500 font-medium">Değişiklikleri onaylamak için mevcut şifrenizi girmeniz zorunludur (Varsayılan: 654321).</p>
-              </div>
-
-              <div className="border-t border-slate-100 pt-4 grid md:grid-cols-2 gap-4">
-                {/* New Password Field */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
-                    Yeni Şifre (İsteğe Bağlı)
-                  </label>
-                  <div className="relative">
-                    <Key className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                    <input
-                      type={showSecurityPasswords ? "text" : "password"}
-                      value={securityNewPassword}
-                      onChange={(e) => setSecurityNewPassword(e.target.value)}
-                      placeholder="Yeni şifre (Değiştirmek istemiyorsanız boş bırakın)"
-                      className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-4 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
-                    />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Sol Kolon: Mevcut Admin Giriş & Güvenlik Ayarları Kartı */}
+            <div className="bg-white border border-slate-200/80 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 flex flex-col justify-between">
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center">
+                      <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div>
+                      <h2 className="font-extrabold text-lg text-slate-900">Admin Giriş & Güvenlik Ayarları</h2>
+                      <p className="text-xs text-slate-500 font-medium">Yönetim paneline giriş kullanıcı adınızı ve şifrenizi güvenli şekilde güncelleyin.</p>
+                    </div>
                   </div>
+                  <span className="bg-slate-100 text-slate-700 text-xs font-mono font-bold px-3 py-1 rounded-full border border-slate-200 self-start sm:self-auto">
+                    Güvenlik Seviyesi: Yüksek
+                  </span>
                 </div>
 
-                {/* Confirm New Password Field */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
-                    Yeni Şifre Tekrar
-                  </label>
-                  <div className="relative">
-                    <Key className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                    <input
-                      type={showSecurityPasswords ? "text" : "password"}
-                      value={securityNewPasswordConfirm}
-                      onChange={(e) => setSecurityNewPasswordConfirm(e.target.value)}
-                      placeholder="Yeni şifreyi tekrar girin"
-                      className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-4 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
-                    />
+                <form id="admin-security-form" onSubmit={handleSaveSecuritySettings} className="space-y-4 pt-4">
+                  {/* Username Field */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                      Yönetici Kullanıcı Adı
+                    </label>
+                    <div className="relative">
+                      <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                      <input
+                        type="text"
+                        value={securityUsername}
+                        onChange={(e) => setSecurityUsername(e.target.value)}
+                        placeholder="Kullanıcı adı"
+                        required
+                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-4 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">Giriş yaparken kullanacağınız kullanıcı adı (Varsayılan: poset).</p>
                   </div>
-                </div>
+
+                  {/* Current Password Field */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                      Mevcut Şifreniz <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                      <input
+                        type={showSecurityPasswords ? "text" : "password"}
+                        value={securityCurrentPassword}
+                        onChange={(e) => setSecurityCurrentPassword(e.target.value)}
+                        placeholder="Mevcut şifrenizi girin"
+                        required
+                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-10 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSecurityPasswords(!showSecurityPasswords)}
+                        className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        {showSecurityPasswords ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">Değişiklikleri onaylamak için mevcut şifrenizi girmeniz zorunludur (Varsayılan: 654321).</p>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-4 grid sm:grid-cols-2 gap-4">
+                    {/* New Password Field */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                        Yeni Şifre (İsteğe Bağlı)
+                      </label>
+                      <div className="relative">
+                        <Key className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                        <input
+                          type={showSecurityPasswords ? "text" : "password"}
+                          value={securityNewPassword}
+                          onChange={(e) => setSecurityNewPassword(e.target.value)}
+                          placeholder="Yeni şifre"
+                          className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-4 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Confirm New Password Field */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                        Yeni Şifre Tekrar
+                      </label>
+                      <div className="relative">
+                        <Key className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                        <input
+                          type={showSecurityPasswords ? "text" : "password"}
+                          value={securityNewPasswordConfirm}
+                          onChange={(e) => setSecurityNewPasswordConfirm(e.target.value)}
+                          placeholder="Yeni şifre tekrar"
+                          className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-4 py-3 rounded-xl focus:bg-white focus:border-indigo-600 outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </form>
               </div>
 
-              <div className="pt-2 flex items-center justify-end">
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end">
                 <button
                   type="submit"
+                  form="admin-security-form"
                   disabled={isSavingSecurity}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs py-3 px-6 rounded-xl flex items-center space-x-2 transition-all cursor-pointer shadow-lg shadow-indigo-600/20 disabled:opacity-50"
                 >
@@ -2528,7 +2558,160 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
                   <span>{isSavingSecurity ? "Kaydediliyor..." : "Güvenlik Bilgilerini Güncelle"}</span>
                 </button>
               </div>
-            </form>
+            </div>
+
+            {/* Sağ Kolon (Kırmızı Ok Alanı): Yeni "Teklif Formu & İletişim Ayarları" Kartı */}
+            <div className="bg-white border border-slate-200/80 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 flex flex-col justify-between">
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center">
+                      <Phone className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <h2 className="font-extrabold text-lg text-slate-900">Teklif Formu & İletişim Ayarları</h2>
+                      <p className="text-xs text-slate-500 font-medium">Teklif taleplerinin yönlendirileceği WhatsApp hattını, e-posta adresini ve form kurallarını belirleyin.</p>
+                    </div>
+                  </div>
+                  <span className="bg-blue-50 text-blue-700 text-xs font-mono font-bold px-3 py-1 rounded-full border border-blue-200 self-start sm:self-auto">
+                    RFQ Entegrasyonu
+                  </span>
+                </div>
+
+                <form id="admin-rfq-settings-form" onSubmit={handleSaveRfqSettings} className="space-y-4 pt-4">
+                  {/* WhatsApp Sipariş Hattı */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                      WhatsApp Sipariş Hattı *
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                      <input
+                        type="text"
+                        value={rfqSettings.whatsappNumber}
+                        onChange={(e) => setRfqSettings(prev => ({ ...prev, whatsappNumber: e.target.value }))}
+                        placeholder="905424086160"
+                        required
+                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-4 py-3 rounded-xl focus:bg-white focus:border-blue-600 outline-none"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">Sitedeki tüm WhatsApp teklif ve destek butonları bu numarayı arayacaktır (Varsayılan: 905424086160).</p>
+                  </div>
+
+                  {/* Teklif Bildirim E-Postası */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                      Teklif Bildirim E-Postası *
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                      <input
+                        type="email"
+                        value={rfqSettings.notificationEmail}
+                        onChange={(e) => setRfqSettings(prev => ({ ...prev, notificationEmail: e.target.value }))}
+                        placeholder="info@reksa.net"
+                        required
+                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm pl-10 pr-4 py-3 rounded-xl focus:bg-white focus:border-blue-600 outline-none"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">Teklif taleplerinin arka planda kopyasının düşeceği resmi e-posta adresi.</p>
+                  </div>
+
+                  {/* Toggles: Aylık Ortalama Tüketim */}
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3.5">
+                    <div className="flex items-center justify-between">
+                      <div className="pr-4">
+                        <span className="text-xs font-bold text-slate-800 block">"Aylık Ortalama Tüketim" Alanını Formda Göster</span>
+                        <span className="text-[11px] text-slate-500 font-medium">Teklif tamamlama modalında müşterinin aylık tüketim miktarını girmesi için alan açar.</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={rfqSettings.showMonthlyConsumption}
+                          onChange={(e) => setRfqSettings(prev => ({ ...prev, showMonthlyConsumption: e.target.checked }))}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-slate-200/60 pt-3">
+                      <div className="pr-4">
+                        <span className="text-xs font-bold text-slate-800 block">"Aylık Tüketim" Doldurulması Zorunlu Olsun</span>
+                        <span className="text-[11px] text-slate-500 font-medium">Müşteri bu alanı doldurmadan teklif talebini gönderemez.</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          disabled={!rfqSettings.showMonthlyConsumption}
+                          checked={rfqSettings.requireMonthlyConsumption && rfqSettings.showMonthlyConsumption}
+                          onChange={(e) => setRfqSettings(prev => ({ ...prev, requireMonthlyConsumption: e.target.checked }))}
+                          className="sr-only peer disabled:opacity-40"
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    {/* Vergi / KDV Notu */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                        Vergi / KDV Notu
+                      </label>
+                      <input
+                        type="text"
+                        value={rfqSettings.taxNote}
+                        onChange={(e) => setRfqSettings(prev => ({ ...prev, taxNote: e.target.value }))}
+                        placeholder="KDV Hariç"
+                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm px-3.5 py-3 rounded-xl focus:bg-white focus:border-blue-600 outline-none"
+                      />
+                    </div>
+
+                    {/* Buton Metni */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                        Gönder Buton Metni
+                      </label>
+                      <input
+                        type="text"
+                        value={rfqSettings.submitButtonText}
+                        onChange={(e) => setRfqSettings(prev => ({ ...prev, submitButtonText: e.target.value }))}
+                        placeholder="Teklif Talebini Gönder"
+                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm px-3.5 py-3 rounded-xl focus:bg-white focus:border-blue-600 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Teklif Dipnotu / Geçerlilik Süresi */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider block">
+                      Teklif Dipnotu / Geçerlilik Süresi
+                    </label>
+                    <input
+                      type="text"
+                      value={rfqSettings.validityNote}
+                      onChange={(e) => setRfqSettings(prev => ({ ...prev, validityNote: e.target.value }))}
+                      placeholder="Fiyatlarımız 15 gün geçerlidir."
+                      className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold text-sm px-3.5 py-3 rounded-xl focus:bg-white focus:border-blue-600 outline-none"
+                    />
+                    <p className="text-[11px] text-slate-500 font-medium">Teklif sepeti ve şartname altında görünecek yasal geçerlilik notu.</p>
+                  </div>
+                </form>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end">
+                <button
+                  type="submit"
+                  form="admin-rfq-settings-form"
+                  disabled={isSavingRfq}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs py-3 px-6 rounded-xl flex items-center space-x-2 transition-all cursor-pointer shadow-lg shadow-blue-600/20 disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isSavingRfq ? "Kaydediliyor..." : "Teklif Ayarlarını Kaydet"}</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

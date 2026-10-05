@@ -1,4 +1,5 @@
 import React from 'react';
+import { useQuote } from '../context/QuoteContext';
 
 interface FooterProps {
   setActiveTab?: (tab: string) => void;
@@ -6,6 +7,18 @@ interface FooterProps {
 }
 
 export const Footer: React.FC<FooterProps> = ({ setActiveTab, setTab }) => {
+  const { rfqSettings } = useQuote();
+  const rawNumber = rfqSettings?.whatsappNumber || "905424086160";
+  const cleanNumber = rawNumber.replace(/[^0-9]/g, "");
+
+  const formatPhone = (num: string) => {
+    const c = num.replace(/[^0-9]/g, "");
+    if (c.length === 12 && c.startsWith("90")) {
+      return `+90 (${c.slice(2, 5)}) ${c.slice(5, 8)} ${c.slice(8, 10)} ${c.slice(10, 12)}`;
+    }
+    return num;
+  };
+
   const handleNav = (tab: string) => {
     const navFn = setTab || setActiveTab;
     if (navFn) {
@@ -95,7 +108,9 @@ export const Footer: React.FC<FooterProps> = ({ setActiveTab, setTab }) => {
               </li>
               <li className="flex items-center gap-2">
                 <svg className="w-4 h-4 text-emerald-500 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.598 2.664-.698c.969.587 1.961.947 3.208.947 3.182 0 5.768-2.586 5.768-5.766 0-3.18-2.586-5.766-5.768-5.766zm0-2.172c4.379 0 7.931 3.552 7.931 7.938 0 4.385-3.552 7.937-7.931 7.937-1.428 0-2.766-.381-3.927-1.043l-4.104 1.077 1.096-4.01c-.732-1.205-1.157-2.617-1.157-4.129 0-4.386 3.552-7.938 7.931-7.938z" /></svg>
-                <a href="https://wa.me/905322153403" target="_blank" rel="noreferrer" className="hover:text-emerald-600">+90 (532) 215 34 03</a>
+                <a href={`https://wa.me/${cleanNumber}`} target="_blank" rel="noreferrer" className="hover:text-emerald-600">
+                  {formatPhone(rawNumber)}
+                </a>
               </li>
               <li className="flex items-center gap-2">
                 <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>

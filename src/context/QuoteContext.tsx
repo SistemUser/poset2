@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { QuoteItem } from "../types";
+import { QuoteItem, RfqSettings, DEFAULT_RFQ_SETTINGS } from "../types";
 
 export interface CustomerInfo {
   name?: string;
   phone?: string;
   company?: string;
   email?: string;
+  monthlyConsumption?: string;
   note?: string;
 }
 
@@ -15,13 +16,27 @@ interface QuoteContextType {
   addToQuoteBasket: (item: QuoteItem) => void;
   removeFromQuoteBasket: (id: string) => void;
   clearQuoteBasket: () => void;
+  clearCart: () => void;
+  rfqSettings: RfqSettings;
+  updateRfqSettings: (newSettings: Partial<RfqSettings>) => void;
   formatCustomProductTitle: (urun_adi: string) => string;
   formatCustomDimensions: (en: string | number, boy: string | number, koruk?: string | number) => string;
-  generateWhatsAppQuoteText: (items?: QuoteItem[], customer?: CustomerInfo) => string;
-  getWhatsAppQuoteUrl: (items?: QuoteItem[], customer?: CustomerInfo, phoneNumber?: string) => string;
+  generateWhatsAppQuoteText: (items?: QuoteItem[], customer?: CustomerInfo, settings?: RfqSettings) => string;
+  getWhatsAppQuoteUrl: (items?: QuoteItem[], customer?: CustomerInfo, phoneNumber?: string, settings?: RfqSettings) => string;
 }
 
 const QuoteContext = createContext<QuoteContextType | null>(null);
+
+export function getStoredRfqSettings(): RfqSettings {
+  try {
+    const saved = localStorage.getItem("poset_rfq_settings");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return { ...DEFAULT_RFQ_SETTINGS, ...parsed };
+    }
+  } catch (e) {}
+  return DEFAULT_RFQ_SETTINGS;
+}
 
 export function formatCustomProductTitle(urun_adi: string): string {
   const cleanName = (urun_adi || "").trim();
@@ -47,21 +62,24 @@ export function formatCustomDimensions(
 
 export function generateWhatsAppQuoteText(
   items: QuoteItem[] = [], 
-  customer: CustomerInfo = {}
+  customer: CustomerInfo = {},
+  settings?: RfqSettings
 ): string {
   const dateStr = new Date().toLocaleDateString("tr-TR");
   const timeStr = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+  const activeSettings = settings || getStoredRfqSettings();
 
   let text = `📦 *AMBALAJ MARKET - FİYAT TEKLİFİ VE SİPARİŞ TALEBİ*\n`;
   text += `📅 *Tarih:* ${dateStr} ${timeStr}\n`;
   text += `───────────────────────\n`;
 
-  if (customer.name || customer.company || customer.phone) {
+  if (customer.name || customer.company || customer.phone || customer.email || customer.monthlyConsumption) {
     text += `👤 *MÜŞTERİ BİLGİLERİ*\n`;
     if (customer.name) text += `• *Yetkili:* ${customer.name}\n`;
-    if (customer.company) text += `• *Firma:* ${customer.company}\n`;
+    if (customer.company) text += `• *Firma / Marka:* ${customer.company}\n`;
     if (customer.phone) text += `• *Telefon:* ${customer.phone}\n`;
     if (customer.email) text += `• *E-Posta:* ${customer.email}\n`;
+    if (customer.monthlyConsumption) text += `• *Aylık Tüketim Potansiyeli:* ${customer.monthlyConsumption}\n`;
     text += `───────────────────────\n`;
   }
 
@@ -91,13 +109,22 @@ export function generateWhatsAppQuoteText(
   });
 
   const totalPrice = items.reduce((sum, item) => sum + (item.toplam_fiyat || 0), 0);
+  const taxNote = activeSettings.taxNote || "KDV Hariç";
+  const validityNote = activeSettings.validityNote || "Fiyatlarımız 15 gün geçerlidir.";
+
+  text += `───────────────────────\n`;
   if (totalPrice > 0) {
-    text += `───────────────────────\n`;
-    text += `💰 *TOPLAM TAHMİNİ TUTAR:* ₺${totalPrice.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} + KDV\n`;
+    text += `💰 *TOPLAM TAHMİNİ TUTAR:* ₺${totalPrice.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} (${taxNote})\n`;
+  } else {
+    text += `💰 *TOPLAM TAHMİNİ TUTAR:* Özel İmalat / Teklif İle Belirlenecektir (${taxNote})\n`;
+  }
+
+  if (validityNote) {
+    text += `ℹ️ *Teklif Notu:* ${validityNote}\n`;
   }
 
   if (customer.note) {
-    text += `\n💬 *Genel Not:* ${customer.note}\n`;
+    text += `💬 *Müşteri Notu:* ${customer.note}\n`;
   }
 
   text += `\n_Bu teklif talebi poset.com üzerinden oluşturulmuştur._`;
@@ -107,10 +134,13 @@ export function generateWhatsAppQuoteText(
 export function getWhatsAppQuoteUrl(
   items: QuoteItem[] = [], 
   customer: CustomerInfo = {},
-  phoneNumber: string = "905322153403"
+  phoneNumber?: string,
+  settings?: RfqSettings
 ): string {
-  const cleanPhone = phoneNumber.replace(/[^0-9]/g, "");
-  const messageText = generateWhatsAppQuoteText(items, customer);
+  const activeSettings = settings || getStoredRfqSettings();
+  const rawPhone = phoneNumber || activeSettings.whatsappNumber || DEFAULT_RFQ_SETTINGS.whatsappNumber;
+  const cleanPhone = rawPhone.replace(/[^0-9]/g, "");
+  const messageText = generateWhatsAppQuoteText(items, customer, activeSettings);
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(messageText)}`;
 }
 
@@ -125,6 +155,21 @@ export const QuoteProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (e) {}
     return [];
   });
+
+  const [rfqSettings, setRfqSettings] = useState<RfqSettings>(() => getStoredRfqSettings());
+
+  useEffect(() => {
+    const handleSettingsUpdated = () => {
+      setRfqSettings(getStoredRfqSettings());
+    };
+
+    window.addEventListener("rfq_settings_updated", handleSettingsUpdated);
+    window.addEventListener("storage", handleSettingsUpdated);
+    return () => {
+      window.removeEventListener("rfq_settings_updated", handleSettingsUpdated);
+      window.removeEventListener("storage", handleSettingsUpdated);
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -144,6 +189,15 @@ export const QuoteProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setQuoteBasket([]);
   };
 
+  const updateRfqSettings = (newSettings: Partial<RfqSettings>) => {
+    const updated = { ...rfqSettings, ...newSettings };
+    setRfqSettings(updated);
+    try {
+      localStorage.setItem("poset_rfq_settings", JSON.stringify(updated));
+      window.dispatchEvent(new Event("rfq_settings_updated"));
+    } catch (e) {}
+  };
+
   return (
     <QuoteContext.Provider
       value={{
@@ -152,6 +206,9 @@ export const QuoteProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addToQuoteBasket,
         removeFromQuoteBasket,
         clearQuoteBasket,
+        clearCart: clearQuoteBasket,
+        rfqSettings,
+        updateRfqSettings,
         formatCustomProductTitle,
         formatCustomDimensions,
         generateWhatsAppQuoteText,
@@ -166,13 +223,16 @@ export const QuoteProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 export function useQuote(): QuoteContextType {
   const context = useContext(QuoteContext);
   if (!context) {
-    // Graceful fallback for components used outside Provider
+    const defaultSettings = getStoredRfqSettings();
     return {
       quoteBasket: [],
       setQuoteBasket: () => {},
       addToQuoteBasket: () => {},
       removeFromQuoteBasket: () => {},
       clearQuoteBasket: () => {},
+      clearCart: () => {},
+      rfqSettings: defaultSettings,
+      updateRfqSettings: () => {},
       formatCustomProductTitle,
       formatCustomDimensions,
       generateWhatsAppQuoteText,
