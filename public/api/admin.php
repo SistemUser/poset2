@@ -391,14 +391,34 @@ if ($action === 'settings') {
 }
 
 function sendAdminSmtpEmail($cfg, $to, $subject, $body) {
-    $rawHost = !empty($cfg['host']) ? $cfg['host'] : 'server.reksa.net';
+    $rawHost = !empty($cfg['host']) ? trim((string)$cfg['host']) : 'server.reksa.net';
     $smtpPort = !empty($cfg['port']) ? intval($cfg['port']) : 465;
-    $username = !empty($cfg['user']) ? $cfg['user'] : 'info@poset.com';
-    $password = !empty($cfg['pass']) ? $cfg['pass'] : '';
-    $from = !empty($cfg['fromEmail']) ? $cfg['fromEmail'] : $username;
-    $fromName = !empty($cfg['fromName']) ? $cfg['fromName'] : 'Poset.com Teklif Sistemi';
+    $username = !empty($cfg['user']) ? trim((string)$cfg['user']) : 'info@poset.com';
+    $password = !empty($cfg['pass']) ? (string)$cfg['pass'] : '';
+    $from = !empty($cfg['fromEmail']) ? trim((string)$cfg['fromEmail']) : $username;
+    $fromName = !empty($cfg['fromName']) ? trim((string)$cfg['fromName']) : 'Poset.com Teklif Sistemi';
 
-    $smtpHost = (strpos($rawHost, '://') === false && $smtpPort == 465) ? 'ssl://' . $rawHost : $rawHost;
+    // List of candidate endpoints to try (handles NAT loopback if server cannot connect to its own external IP)
+    $hostAttempts = [];
+    if (strpos($rawHost, '://') !== false) {
+        $hostAttempts[] = ['host' => $rawHost, 'port' => $smtpPort];
+    } else {
+        if ($smtpPort == 465) {
+            $hostAttempts[] = ['host' => 'ssl://' . $rawHost, 'port' => 465];
+            $hostAttempts[] = ['host' => 'ssl://127.0.0.1', 'port' => 465];
+            $hostAttempts[] = ['host' => 'ssl://localhost', 'port' => 465];
+            $hostAttempts[] = ['host' => 'tcp://' . $rawHost, 'port' => 587];
+            $hostAttempts[] = ['host' => 'tcp://127.0.0.1', 'port' => 587];
+        } else {
+            $hostAttempts[] = ['host' => 'tcp://' . $rawHost, 'port' => $smtpPort];
+            $hostAttempts[] = ['host' => 'tcp://127.0.0.1', 'port' => $smtpPort];
+            $hostAttempts[] = ['host' => 'ssl://' . $rawHost, 'port' => 465];
+        }
+    }
+
+    $lastErr = '';
+    $socket = null;
+    $connectedHost = '';
 
     $context = stream_context_create([
         'ssl' => [
@@ -408,9 +428,38 @@ function sendAdminSmtpEmail($cfg, $to, $subject, $body) {
         ]
     ]);
 
-    $socket = @stream_socket_client("{$smtpHost}:{$smtpPort}", $errno, $errstr, 12, STREAM_CLIENT_CONNECT, $context);
+    foreach ($hostAttempts as $attempt) {
+        $errno = 0;
+        $errstr = '';
+        $s = @stream_socket_client("{$attempt['host']}:{$attempt['port']}", $errno, $errstr, 6, STREAM_CLIENT_CONNECT, $context);
+        if ($s) {
+            $socket = $s;
+            $connectedHost = $attempt['host'] . ':' . $attempt['port'];
+            break;
+        } else {
+            $lastErr = "{$attempt['host']}:{$attempt['port']} (" . ($errstr ?: 'Bağlantı reddedildi/zaman aşımı') . " - {$errno})";
+        }
+    }
+
     if (!$socket) {
-        return ['success' => false, 'error' => "Bağlantı hatası: {$errstr} ({$errno})"];
+        // Fallback to PHP native mail()
+        $headers = "MIME-Version: 1.0\r\n";
+        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $headers .= "From: {$fromName} <{$from}>\r\n";
+        $headers .= "Reply-To: {$from}\r\n";
+        $headers .= "X-Mailer: Poset.com Mailer (PHP Fallback)\r\n";
+        $mailSuccess = @mail($to, $subject, $body, $headers);
+        if ($mailSuccess) {
+            return [
+                'success' => true,
+                'message' => "Test iletisi sunucu yerel mail servisi (PHP mail fallback) ile {$to} adresine başarıyla gönderildi."
+            ];
+        }
+        return [
+            'success' => false,
+            'error' => "SMTP sunucusuna bağlanılamadı. [Deneme: {$lastErr}]. Lütfen sunucu güvenlik duvarı (port 465/587) ve host ayarlarını kontrol edin.",
+            'message' => "SMTP sunucusuna bağlanılamadı. [Deneme: {$lastErr}]"
+        ];
     }
 
     $readResp = function($s) {
@@ -423,7 +472,7 @@ function sendAdminSmtpEmail($cfg, $to, $subject, $body) {
     };
 
     $readResp($socket);
-    fwrite($socket, "EHLO {$rawHost}\r\n");
+    fwrite($socket, "EHLO server.reksa.net\r\n");
     $readResp($socket);
 
     fwrite($socket, "AUTH LOGIN\r\n");
@@ -436,7 +485,11 @@ function sendAdminSmtpEmail($cfg, $to, $subject, $body) {
     $authStatus = $readResp($socket);
     if (substr($authStatus, 0, 3) !== '235') {
         fclose($socket);
-        return ['success' => false, 'error' => 'SMTP Kimlik Doğrulama Başarısız: ' . trim($authStatus)];
+        return [
+            'success' => false, 
+            'error' => 'SMTP Kimlik Doğrulama Başarısız: ' . trim($authStatus) . ' (Kullanıcı: ' . $username . ')',
+            'message' => 'SMTP Kimlik Doğrulama Başarısız: ' . trim($authStatus)
+        ];
     }
 
     fwrite($socket, "MAIL FROM: <{$from}>\r\n");
@@ -451,7 +504,7 @@ function sendAdminSmtpEmail($cfg, $to, $subject, $body) {
     $headersArr = [
         "MIME-Version: 1.0",
         "Content-Type: text/html; charset=UTF-8",
-        "From: {$fromName} <{$from}>",
+        "From: {$fromName} <{$from}>\r\n",
         "To: <{$to}>",
         "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=",
         "Date: " . date("r")
@@ -464,10 +517,14 @@ function sendAdminSmtpEmail($cfg, $to, $subject, $body) {
     fclose($socket);
 
     if (substr($dataResp, 0, 3) !== '250') {
-        return ['success' => false, 'error' => 'E-posta iletilemedi: ' . trim($dataResp)];
+        return [
+            'success' => false, 
+            'error' => 'E-posta iletilemedi: ' . trim($dataResp),
+            'message' => 'E-posta iletilemedi: ' . trim($dataResp)
+        ];
     }
 
-    return ['success' => true];
+    return ['success' => true, 'message' => "Test e-postası ({$connectedHost} üzerinden) {$to} adresine başarıyla gönderildi."];
 }
 
 if ($action === 'rfq') {
@@ -537,6 +594,9 @@ if ($action === 'smtp') {
 if ($action === 'test-smtp') {
     $settings = getDbData($settingsFile, $defaultSettings);
     $cfg = !empty($input['host']) ? $input : ($settings['smtp'] ?? []);
+    if (empty($cfg['pass']) && !empty($settings['smtp']['pass'])) {
+        $cfg['pass'] = $settings['smtp']['pass'];
+    }
     $testTo = !empty($input['testEmail']) ? trim($input['testEmail']) : (!empty($cfg['fromEmail']) ? $cfg['fromEmail'] : (!empty($cfg['user']) ? $cfg['user'] : 'info@poset.com'));
 
     $body = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">'
@@ -554,10 +614,13 @@ if ($action === 'test-smtp') {
 
     $res = sendAdminSmtpEmail($cfg, $testTo, 'poset.com SMTP Bağlantı Testi (Başarılı)', $body);
     if ($res['success']) {
-        echo json_encode(['success' => true, 'message' => "Test e-postası {$testTo} adresine başarıyla gönderildi."], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['success' => true, 'message' => $res['message'] ?? "Test e-postası {$testTo} adresine başarıyla gönderildi."], JSON_UNESCAPED_UNICODE);
     } else {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'message' => $res['error'] ?? 'SMTP bağlantısı başarısız oldu.'], JSON_UNESCAPED_UNICODE);
+        echo json_encode([
+            'success' => false, 
+            'error' => $res['error'] ?? 'SMTP bağlantısı başarısız oldu.',
+            'message' => $res['message'] ?? ($res['error'] ?? 'SMTP bağlantısı başarısız oldu.')
+        ], JSON_UNESCAPED_UNICODE);
     }
     exit;
 }

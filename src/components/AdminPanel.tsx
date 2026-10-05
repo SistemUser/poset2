@@ -419,9 +419,10 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
         });
         triggerToast("✓ SMTP Bağlantısı Başarılı!");
       } else {
+        const errorDetail = data?.message || data?.error || lastErrorMessage || "Sunucuya bağlanılamadı.";
         setSmtpTestResult({
           success: false,
-          message: `✕ Bağlantı Hatası: ${data?.message || "Sunucuya bağlanılamadı."}`
+          message: `✕ Bağlantı Hatası: ${errorDetail}`
         });
       }
     } catch (err: any) {

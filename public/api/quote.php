@@ -51,8 +51,24 @@ function sendSmtpEmail($to, $subject, $body, $replyToEmail = '', $attachments = 
     $from = !empty($cfg['fromEmail']) ? $cfg['fromEmail'] : $username;
     $fromName = !empty($cfg['fromName']) ? $cfg['fromName'] : 'Poset.com Teklif Sistemi';
 
-    $smtpHost = (strpos($rawHost, '://') === false && $smtpPort == 465) ? 'ssl://' . $rawHost : $rawHost;
+    $hostAttempts = [];
+    if (strpos($rawHost, '://') !== false) {
+        $hostAttempts[] = ['host' => $rawHost, 'port' => $smtpPort];
+    } else {
+        if ($smtpPort == 465) {
+            $hostAttempts[] = ['host' => 'ssl://' . $rawHost, 'port' => 465];
+            $hostAttempts[] = ['host' => 'ssl://127.0.0.1', 'port' => 465];
+            $hostAttempts[] = ['host' => 'ssl://localhost', 'port' => 465];
+            $hostAttempts[] = ['host' => 'tcp://' . $rawHost, 'port' => 587];
+            $hostAttempts[] = ['host' => 'tcp://127.0.0.1', 'port' => 587];
+        } else {
+            $hostAttempts[] = ['host' => 'tcp://' . $rawHost, 'port' => $smtpPort];
+            $hostAttempts[] = ['host' => 'tcp://127.0.0.1', 'port' => $smtpPort];
+            $hostAttempts[] = ['host' => 'ssl://' . $rawHost, 'port' => 465];
+        }
+    }
 
+    $socket = null;
     $context = stream_context_create([
         'ssl' => [
             'verify_peer' => false,
@@ -61,7 +77,16 @@ function sendSmtpEmail($to, $subject, $body, $replyToEmail = '', $attachments = 
         ]
     ]);
 
-    $socket = @stream_socket_client("{$smtpHost}:{$smtpPort}", $errno, $errstr, 12, STREAM_CLIENT_CONNECT, $context);
+    foreach ($hostAttempts as $attempt) {
+        $errno = 0;
+        $errstr = '';
+        $s = @stream_socket_client("{$attempt['host']}:{$attempt['port']}", $errno, $errstr, 6, STREAM_CLIENT_CONNECT, $context);
+        if ($s) {
+            $socket = $s;
+            break;
+        }
+    }
+
     if (!$socket) {
         $headers = "MIME-Version: 1.0\r\n";
         $headers .= "Content-Type: text/html; charset=UTF-8\r\n";

@@ -19,6 +19,9 @@
   RewriteRule ^api/admin/categories(/.*)?$ api/admin.php?action=categories [QSA,L]
 
   RewriteRule ^api/admin/settings(/.*)?$ api/admin.php?action=settings [QSA,L]
+  RewriteRule ^api/admin/test-smtp(/.*)?$ api/admin.php?action=test-smtp [QSA,L]
+  RewriteRule ^api/admin/smtp(/.*)?$ api/admin.php?action=smtp [QSA,L]
+  RewriteRule ^api/admin/rfq(/.*)?$ api/admin.php?action=rfq [QSA,L]
   RewriteRule ^api/admin/refresh-rate(/.*)?$ api/admin.php?action=refresh-rate [QSA,L]
   RewriteRule ^api/admin/multiplier-templates/([^/?]+)$ api/admin.php?action=multiplier-templates&id=$1 [QSA,L]
   RewriteRule ^api/admin/multiplier-templates(/.*)?$ api/admin.php?action=multiplier-templates [QSA,L]
