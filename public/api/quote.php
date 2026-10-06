@@ -234,7 +234,8 @@ if (isset($input['action']) && $input['action'] === 'submit_rfq') {
     $custCompany = isset($customer['company']) ? htmlspecialchars($customer['company']) : 'Belirtilmedi';
     $custEmail = isset($customer['email']) ? htmlspecialchars($customer['email']) : 'Belirtilmedi';
     $custMonthly = isset($customer['monthlyConsumption']) ? htmlspecialchars($customer['monthlyConsumption']) : 'Belirtilmedi';
-    $custNote = isset($customer['notes']) ? htmlspecialchars($customer['notes']) : (isset($customer['note']) ? htmlspecialchars($customer['note']) : 'Belirtilmedi');
+    $rawNote = !empty($customer['notes']) ? trim((string)$customer['notes']) : (!empty($customer['note']) ? trim((string)$customer['note']) : '');
+    $custNote = htmlspecialchars($rawNote);
     $taxNoteText = isset($input['tax_note']) ? htmlspecialchars($input['tax_note']) : 'KDV Hariç';
     $validityNoteText = isset($input['validity_note']) ? htmlspecialchars($input['validity_note']) : 'Fiyatlarımız 15 gün geçerlidir.';
 
@@ -271,7 +272,7 @@ if (isset($input['action']) && $input['action'] === 'submit_rfq') {
           . "<tr><td class='info-label'>E-Posta Adresi:</td><td class='info-val'>{$custEmail}</td></tr>"
           . "<tr><td class='info-label'>Aylık Tüketim Potansiyeli:</td><td class='info-val'>{$custMonthly}</td></tr>";
 
-    if ($custNote !== 'Belirtilmedi') {
+    if (!empty($rawNote) && $rawNote !== 'Belirtilmedi') {
         $body .= "<tr><td class='info-label' style='vertical-align: top; padding-top: 10px;'>Müşteri Notu:</td><td class='info-val'><div style='font-size: 14px; font-weight: bold; color: #be123c; background: #fff1f2; border-left: 4px solid #e11d48; padding: 10px 14px; border-radius: 6px; line-height: 1.5;'>🔴 {$custNote}</div></td></tr>";
     }
 
