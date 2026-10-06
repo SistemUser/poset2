@@ -3022,8 +3022,8 @@ function sendSmtpEmailNode(options: {
   });
 }
 
-app.get(["/api/admin/rfq", "/api/admin.php"], async (req, res, next) => {
-  if (req.path.includes("admin.php") && req.query.action !== "rfq") {
+app.get(["/api/admin/rfq", "/api/admin.php", "/api/api.php"], async (req, res, next) => {
+  if ((req.path.includes("admin.php") || req.path.includes("api.php")) && req.query.action !== "rfq") {
     return next();
   }
   try {
@@ -3043,9 +3043,9 @@ app.get(["/api/admin/rfq", "/api/admin.php"], async (req, res, next) => {
   }
 });
 
-app.post(["/api/admin/rfq", "/api/admin.php"], async (req, res, next) => {
+app.post(["/api/admin/rfq", "/api/admin.php", "/api/api.php"], async (req, res, next) => {
   const action = req.query.action || req.body?.action;
-  if (req.path.includes("admin.php") && action !== "rfq") {
+  if ((req.path.includes("admin.php") || req.path.includes("api.php")) && action !== "rfq") {
     return next();
   }
   try {
@@ -3067,8 +3067,8 @@ app.post(["/api/admin/rfq", "/api/admin.php"], async (req, res, next) => {
   }
 });
 
-app.get(["/api/admin/smtp", "/api/admin.php"], async (req, res, next) => {
-  if (req.path.includes("admin.php") && req.query.action !== "smtp") {
+app.get(["/api/admin/smtp", "/api/admin.php", "/api/api.php"], async (req, res, next) => {
+  if ((req.path.includes("admin.php") || req.path.includes("api.php")) && req.query.action !== "smtp") {
     return next();
   }
   try {
@@ -3079,9 +3079,9 @@ app.get(["/api/admin/smtp", "/api/admin.php"], async (req, res, next) => {
   }
 });
 
-app.post(["/api/admin/smtp", "/api/admin.php"], async (req, res, next) => {
+app.post(["/api/admin/smtp", "/api/admin.php", "/api/api.php"], async (req, res, next) => {
   const action = req.query.action || req.body?.action;
-  if (req.path.includes("admin.php") && action !== "smtp") {
+  if ((req.path.includes("admin.php") || req.path.includes("api.php")) && action !== "smtp") {
     return next();
   }
   try {
@@ -3103,9 +3103,9 @@ app.post(["/api/admin/smtp", "/api/admin.php"], async (req, res, next) => {
   }
 });
 
-app.post(["/api/admin/test-smtp", "/api/admin.php"], async (req, res, next) => {
+app.post(["/api/admin/test-smtp", "/api/admin.php", "/api/api.php"], async (req, res, next) => {
   const action = req.query.action || req.body?.action;
-  if (req.path.includes("admin.php") && action !== "test-smtp") {
+  if ((req.path.includes("admin.php") || req.path.includes("api.php")) && action !== "test-smtp") {
     return next();
   }
   try {

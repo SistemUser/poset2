@@ -237,6 +237,24 @@ if ($action === 'delete_product') {
     $action = 'products';
     $method = 'DELETE';
 }
+if (empty($action) && isset($input['action'])) {
+    $action = (string)$input['action'];
+}
+if (
+    str_contains($action, 'smtp') || 
+    str_contains($action, 'rfq') || 
+    str_contains($action, 'refresh-rate') || 
+    str_contains($action, 'multiplier-templates') ||
+    str_starts_with($action, 'admin/') ||
+    str_contains($_SERVER['REQUEST_URI'] ?? '', 'smtp') ||
+    str_contains($_SERVER['REQUEST_URI'] ?? '', 'rfq') ||
+    str_contains($_SERVER['REQUEST_URI'] ?? '', 'refresh-rate') ||
+    str_contains($_SERVER['REQUEST_URI'] ?? '', 'multiplier-templates') ||
+    str_contains($_SERVER['REQUEST_URI'] ?? '', 'api/admin')
+) {
+    require __DIR__ . '/admin.php';
+    exit;
+}
 if (empty($action)) {
     $uris = [
         $_SERVER['REQUEST_URI'] ?? '',

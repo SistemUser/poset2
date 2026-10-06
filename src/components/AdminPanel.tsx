@@ -230,10 +230,12 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
   useEffect(() => {
     const fetchRfq = async () => {
       const endpoints = [
-        getApiEndpoint("api/admin/rfq"),
         getApiEndpoint("api/admin.php?action=rfq"),
+        "/api/admin.php?action=rfq",
+        getApiEndpoint("api/admin/rfq"),
         "/api/admin/rfq",
-        "/api/admin.php?action=rfq"
+        getApiEndpoint("api/api.php?action=rfq"),
+        "/api/api.php?action=rfq"
       ];
       for (const ep of endpoints) {
         try {
@@ -261,17 +263,19 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
       window.dispatchEvent(new Event("rfq_settings_updated"));
 
       const endpoints = [
-        getApiEndpoint("api/admin/rfq"),
         getApiEndpoint("api/admin.php?action=rfq"),
+        "/api/admin.php?action=rfq",
+        getApiEndpoint("api/admin/rfq"),
         "/api/admin/rfq",
-        "/api/admin.php?action=rfq"
+        getApiEndpoint("api/api.php?action=rfq"),
+        "/api/api.php?action=rfq"
       ];
       for (const ep of endpoints) {
         try {
           await fetch(ep, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(rfqSettings)
+            body: JSON.stringify({ action: "rfq", ...rfqSettings })
           });
         } catch (e) {}
       }
@@ -300,10 +304,12 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
   useEffect(() => {
     const fetchSmtp = async () => {
       const endpoints = [
-        getApiEndpoint("api/admin/smtp"),
         getApiEndpoint("api/admin.php?action=smtp"),
+        "/api/admin.php?action=smtp",
+        getApiEndpoint("api/admin/smtp"),
         "/api/admin/smtp",
-        "/api/admin.php?action=smtp"
+        getApiEndpoint("api/api.php?action=smtp"),
+        "/api/api.php?action=smtp"
       ];
       for (const ep of endpoints) {
         try {
@@ -330,10 +336,12 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
     try {
       localStorage.setItem("poset_smtp_settings", JSON.stringify(smtpSettings));
       const endpoints = [
-        getApiEndpoint("api/admin/smtp"),
         getApiEndpoint("api/admin.php?action=smtp"),
+        "/api/admin.php?action=smtp",
+        getApiEndpoint("api/admin/smtp"),
         "/api/admin/smtp",
-        "/api/admin.php?action=smtp"
+        getApiEndpoint("api/api.php?action=smtp"),
+        "/api/api.php?action=smtp"
       ];
       let savedOnServer = false;
       for (const ep of endpoints) {
@@ -341,7 +349,7 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
           const res = await fetch(ep, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(smtpSettings)
+            body: JSON.stringify({ action: "smtp", ...smtpSettings })
           });
           const text = await res.text();
           if (text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
@@ -371,15 +379,18 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
     try {
       const targetTestEmail = testEmailAddress.trim() || rfqSettings.notificationEmail || smtpSettings.fromEmail || smtpSettings.user;
       const payload = JSON.stringify({
+        action: "test-smtp",
         ...smtpSettings,
         testEmail: targetTestEmail
       });
 
       const endpoints = [
-        getApiEndpoint("api/admin/test-smtp"),
         getApiEndpoint("api/admin.php?action=test-smtp"),
+        "/api/admin.php?action=test-smtp",
+        getApiEndpoint("api/admin/test-smtp"),
         "/api/admin/test-smtp",
-        "/api/admin.php?action=test-smtp"
+        getApiEndpoint("api/api.php?action=test-smtp"),
+        "/api/api.php?action=test-smtp"
       ];
 
       let data: any = null;
@@ -394,8 +405,16 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
           });
           const text = await res.text();
           if (text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
-            data = JSON.parse(text);
-            break;
+            const parsed = JSON.parse(text);
+            data = parsed;
+            if (parsed?.success) {
+              break;
+            } else if (parsed?.error && parsed.error.includes("Geçersiz işlem")) {
+              // Try next endpoint if this one returned "Geçersiz işlem"
+              continue;
+            } else {
+              break;
+            }
           } else if (text && text.length > 0) {
             lastErrorMessage = text.slice(0, 150);
           }

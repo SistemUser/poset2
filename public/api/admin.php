@@ -312,6 +312,11 @@ if ($method === 'POST') {
 }
 
 $action = isset($_GET['action']) ? (string)$_GET['action'] : (isset($_GET['route']) ? (string)$_GET['route'] : '');
+if (empty($action) && isset($input['action'])) {
+    $action = (string)$input['action'];
+}
+$action = preg_replace('/^admin\//', '', $action);
+
 if ($action === 'delete_product') {
     $action = 'products';
     $method = 'DELETE';
