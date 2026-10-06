@@ -477,7 +477,8 @@ function sendAdminSmtpEmail($cfg, $to, $subject, $body) {
     };
 
     $readResp($socket);
-    fwrite($socket, "EHLO server.reksa.net\r\n");
+    $ehloDomain = !empty($rawHost) ? preg_replace('/^(ssl|tcp):\/\//', '', $rawHost) : 'poset.com';
+    fwrite($socket, "EHLO {$ehloDomain}\r\n");
     $readResp($socket);
 
     fwrite($socket, "AUTH LOGIN\r\n");

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { QuoteItem, RfqSettings, DEFAULT_RFQ_SETTINGS } from "../types";
+import { getApiEndpoint } from "../utils/urlHelper";
 
 export interface CustomerInfo {
   name?: string;
@@ -166,6 +167,35 @@ export const QuoteProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const handleSettingsUpdated = () => {
       setRfqSettings(getStoredRfqSettings());
     };
+
+    const fetchLiveRfqSettings = async () => {
+      const endpoints = [
+        getApiEndpoint("api/admin.php?action=rfq"),
+        "/api/admin.php?action=rfq",
+        getApiEndpoint("api/api.php?action=rfq"),
+        "/api/api.php?action=rfq",
+        getApiEndpoint("api/admin/rfq"),
+        "/api/admin/rfq",
+        "/data/settings.json",
+        getApiEndpoint("data/settings.json")
+      ];
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(`${ep}${ep.includes("?") ? "&" : "?"}t=${Date.now()}`);
+          if (res.ok) {
+            const data = await res.json();
+            const rfq = data?.rfq || (data?.smtp ? data.rfq : null);
+            if (rfq && rfq.whatsappNumber) {
+              setRfqSettings(prev => ({ ...prev, ...rfq }));
+              localStorage.setItem("poset_rfq_settings", JSON.stringify({ ...DEFAULT_RFQ_SETTINGS, ...rfq }));
+              break;
+            }
+          }
+        } catch (e) {}
+      }
+    };
+
+    fetchLiveRfqSettings();
 
     window.addEventListener("rfq_settings_updated", handleSettingsUpdated);
     window.addEventListener("storage", handleSettingsUpdated);
