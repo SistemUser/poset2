@@ -13,6 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
+if (!function_exists('resolveDataFile')) {
 function resolveDataFile(string $filename): string {
     $cleanName = basename($filename);
     $docRoot = rtrim($_SERVER['DOCUMENT_ROOT'] ?? '', '/\\');
@@ -48,6 +49,7 @@ function resolveDataFile(string $filename): string {
     }
     return $primaryDir . '/' . $cleanName;
 }
+}
 
 $settingsFile = 'settings.json';
 $productsFile = 'products.json';
@@ -58,6 +60,7 @@ $articlesFile = 'articles.json';
 /**
  * PHP 8.3 Safe JSON Reader with Shared OS Lock (LOCK_SH), json_validate() and Seed Recovery
  */
+if (!function_exists('getDbData')) {
 function getDbData(string $filename, array $default = []): array {
     $file = resolveDataFile($filename);
     $cleanName = basename($filename);
@@ -143,10 +146,9 @@ function getDbData(string $filename, array $default = []): array {
 
     return $decoded;
 }
+}
 
-/**
- * PHP 8.3 Atomic JSON Writer with Exclusive OS Lock (LOCK_EX) and Backup Creation
- */
+if (!function_exists('saveDbData')) {
 function saveDbData(string $filename, array $data): bool {
     $file = resolveDataFile($filename);
     $dir = dirname($file);
@@ -212,6 +214,7 @@ function saveDbData(string $filename, array $data): bool {
 
     return true;
 }
+}
 
 // Route API requests
 $action = isset($_GET['action']) ? (string)$_GET['action'] : '';
@@ -240,21 +243,8 @@ if ($action === 'delete_product') {
 if (empty($action) && isset($input['action'])) {
     $action = (string)$input['action'];
 }
-if (
-    str_contains($action, 'smtp') || 
-    str_contains($action, 'rfq') || 
-    str_contains($action, 'refresh-rate') || 
-    str_contains($action, 'multiplier-templates') ||
-    str_starts_with($action, 'admin/') ||
-    str_contains($_SERVER['REQUEST_URI'] ?? '', 'smtp') ||
-    str_contains($_SERVER['REQUEST_URI'] ?? '', 'rfq') ||
-    str_contains($_SERVER['REQUEST_URI'] ?? '', 'refresh-rate') ||
-    str_contains($_SERVER['REQUEST_URI'] ?? '', 'multiplier-templates') ||
-    str_contains($_SERVER['REQUEST_URI'] ?? '', 'api/admin')
-) {
-    require __DIR__ . '/admin.php';
-    exit;
-}
+$action = preg_replace('/^admin\//', '', $action);
+
 if (empty($action)) {
     $uris = [
         $_SERVER['REQUEST_URI'] ?? '',
@@ -264,23 +254,97 @@ if (empty($action)) {
     ];
     foreach ($uris as $u) {
         $path = parse_url($u, PHP_URL_PATH) ?? '';
+        if (str_contains($path, '/test-smtp')) { $action = 'test-smtp'; break; }
+        if (str_contains($path, '/smtp')) { $action = 'smtp'; break; }
+        if (str_contains($path, '/rfq')) { $action = 'rfq'; break; }
+        if (str_contains($path, '/refresh-rate')) { $action = 'refresh-rate'; break; }
         if (str_contains($path, '/products')) { $action = 'products'; break; }
         if (str_contains($path, '/categories')) { $action = 'categories'; break; }
         if (str_contains($path, '/settings')) { $action = 'settings'; break; }
         if (str_contains($path, '/articles')) { $action = 'articles'; break; }
+        if (str_contains($path, '/multiplier-templates')) { $action = 'multiplier-templates'; break; }
     }
+}
+
+if ($action === 'rfq') {
+    $settings = getDbData($settingsFile, []);
+    $defaultRfq = [
+        'whatsappNumber' => '+905322153403',
+        'notificationEmail' => 'info@poset.com',
+        'showMonthlyConsumption' => true,
+        'requireMonthlyConsumption' => false,
+        'taxNote' => 'KDV Hariç',
+        'validityNote' => 'Fiyatlarımız 15 gün geçerlidir.',
+        'submitButtonText' => 'Teklif Talebini Gönder'
+    ];
+    if ($method === 'POST') {
+        $rfq = [
+            'whatsappNumber' => trim((string)($input['whatsappNumber'] ?? ($settings['rfq']['whatsappNumber'] ?? $defaultRfq['whatsappNumber']))),
+            'notificationEmail' => trim((string)($input['notificationEmail'] ?? ($settings['rfq']['notificationEmail'] ?? $defaultRfq['notificationEmail']))),
+            'showMonthlyConsumption' => isset($input['showMonthlyConsumption']) ? (bool)$input['showMonthlyConsumption'] : true,
+            'requireMonthlyConsumption' => isset($input['requireMonthlyConsumption']) ? (bool)$input['requireMonthlyConsumption'] : false,
+            'taxNote' => trim((string)($input['taxNote'] ?? ($settings['rfq']['taxNote'] ?? $defaultRfq['taxNote']))),
+            'validityNote' => trim((string)($input['validityNote'] ?? ($settings['rfq']['validityNote'] ?? $defaultRfq['validityNote']))),
+            'submitButtonText' => trim((string)($input['submitButtonText'] ?? ($settings['rfq']['submitButtonText'] ?? $defaultRfq['submitButtonText'])))
+        ];
+        $settings['rfq'] = $rfq;
+        saveDbData($settingsFile, $settings);
+        echo json_encode(['success' => true, 'rfq' => $rfq], JSON_UNESCAPED_UNICODE);
+        exit;
+    } else {
+        $rfq = isset($settings['rfq']) && is_array($settings['rfq']) ? array_merge($defaultRfq, $settings['rfq']) : $defaultRfq;
+        echo json_encode(['success' => true, 'rfq' => $rfq], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
+if ($action === 'smtp') {
+    $settings = getDbData($settingsFile, []);
+    $defaultSmtp = [
+        'host' => 'server.reksa.net',
+        'port' => 465,
+        'secure' => true,
+        'user' => 'info@poset.com',
+        'pass' => 'z4DdYyvU32XD',
+        'fromName' => 'Poset.com Teklif Sistemi',
+        'fromEmail' => 'info@poset.com'
+    ];
+    if ($method === 'POST') {
+        $smtp = [
+            'host' => trim((string)($input['host'] ?? ($settings['smtp']['host'] ?? $defaultSmtp['host']))),
+            'port' => intval($input['port'] ?? ($settings['smtp']['port'] ?? 465)),
+            'secure' => isset($input['secure']) ? (bool)$input['secure'] : true,
+            'user' => trim((string)($input['user'] ?? ($settings['smtp']['user'] ?? $defaultSmtp['user']))),
+            'pass' => !empty($input['pass']) ? trim((string)$input['pass']) : ($settings['smtp']['pass'] ?? $defaultSmtp['pass']),
+            'fromName' => trim((string)($input['fromName'] ?? ($settings['smtp']['fromName'] ?? $defaultSmtp['fromName']))),
+            'fromEmail' => trim((string)($input['fromEmail'] ?? ($input['user'] ?? ($settings['smtp']['fromEmail'] ?? $defaultSmtp['fromEmail']))))
+        ];
+        $settings['smtp'] = $smtp;
+        saveDbData($settingsFile, $settings);
+        echo json_encode(['success' => true, 'smtp' => $smtp], JSON_UNESCAPED_UNICODE);
+        exit;
+    } else {
+        $smtp = isset($settings['smtp']) && is_array($settings['smtp']) ? array_merge($defaultSmtp, $settings['smtp']) : $defaultSmtp;
+        echo json_encode(['success' => true, 'smtp' => $smtp], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
+if ($action === 'test-smtp' || $action === 'refresh-rate' || $action === 'multiplier-templates') {
+    require_once __DIR__ . '/admin.php';
+    exit;
 }
 
 if ($action === 'settings') {
     if ($method === 'POST') {
         $current = getDbData($settingsFile, ['usd_try_rate' => 35.45, 'rate_mode' => 'manual', 'collect_api_key' => '']);
-        $newRate = isset($input['usd_try_rate']) ? floatval($input['usd_try_rate']) : $current['usd_try_rate'];
-        $updated = [
+        $newRate = isset($input['usd_try_rate']) ? floatval($input['usd_try_rate']) : ($current['usd_try_rate'] ?? 35.45);
+        $updated = array_merge($current, [
             'usd_try_rate' => $newRate,
-            'rate_mode' => isset($input['rate_mode']) ? (string)$input['rate_mode'] : 'manual',
+            'rate_mode' => isset($input['rate_mode']) ? (string)$input['rate_mode'] : ($current['rate_mode'] ?? 'manual'),
             'collect_api_key' => isset($input['collect_api_key']) ? trim((string)$input['collect_api_key']) : ($current['collect_api_key'] ?? ''),
             'last_updated' => date('d.m.Y H:i:s')
-        ];
+        ]);
         saveDbData($settingsFile, $updated);
         echo json_encode(['success' => true, 'settings' => $updated], JSON_UNESCAPED_UNICODE);
         exit;

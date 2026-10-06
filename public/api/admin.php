@@ -13,6 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
+if (!function_exists('resolveDataFile')) {
 function resolveDataFile(string $filename): string {
     $cleanName = basename($filename);
     $docRoot = rtrim($_SERVER['DOCUMENT_ROOT'] ?? '', '/\\');
@@ -48,6 +49,7 @@ function resolveDataFile(string $filename): string {
     }
     return $primaryDir . '/' . $cleanName;
 }
+}
 
 $settingsFile = 'settings.json';
 $productsFile = 'products.json';
@@ -58,6 +60,7 @@ $articlesFile = 'articles.json';
 /**
  * PHP 8.3 Safe JSON Reader with Shared OS Lock (LOCK_SH), json_validate() and Seed Recovery
  */
+if (!function_exists('getDbData')) {
 function getDbData(string $filename, array $default = []): array {
     $file = resolveDataFile($filename);
     $cleanName = basename($filename);
@@ -143,11 +146,12 @@ function getDbData(string $filename, array $default = []): array {
 
     return $decoded;
 }
-
+}
 
 /**
  * PHP 8.3 Atomic JSON Writer with Exclusive OS Lock (LOCK_EX) and Backup Creation
  */
+if (!function_exists('saveDbData')) {
 function saveDbData(string $filename, array $data): bool {
     $file = resolveDataFile($filename);
     $dir = dirname($file);
@@ -213,7 +217,9 @@ function saveDbData(string $filename, array $data): bool {
 
     return true;
 }
+}
 
+if (!function_exists('fetchCollectApiRate')) {
 function fetchCollectApiRate(string $apiKey = ''): ?float {
     $rateVal = null;
     $apiKey = !empty($apiKey) ? trim($apiKey) : '5FzmRhNGQrHuKmbf03PmYU:0lXeOca14Soi4nfEc81MH1';
@@ -261,7 +267,9 @@ function fetchCollectApiRate(string $apiKey = ''): ?float {
 
     return $rateVal ? round($rateVal, 4) : null;
 }
+}
 
+if (!function_exists('autoUpdateRateIfExpired')) {
 function autoUpdateRateIfExpired(array &$settings, string $settingsFile): void {
     if (isset($settings['rate_mode']) && $settings['rate_mode'] === 'manual') {
         return;
@@ -284,6 +292,7 @@ function autoUpdateRateIfExpired(array &$settings, string $settingsFile): void {
             saveDbData($settingsFile, $settings);
         }
     }
+}
 }
 
 $defaultSettings = [
@@ -395,6 +404,7 @@ if ($action === 'settings') {
     }
 }
 
+if (!function_exists('sendAdminSmtpEmail')) {
 function sendAdminSmtpEmail($cfg, $to, $subject, $body) {
     $rawHost = !empty($cfg['host']) ? trim((string)$cfg['host']) : 'server.reksa.net';
     $smtpPort = !empty($cfg['port']) ? intval($cfg['port']) : 465;
@@ -532,11 +542,12 @@ function sendAdminSmtpEmail($cfg, $to, $subject, $body) {
 
     return ['success' => true, 'message' => "Test e-postası ({$connectedHost} üzerinden) {$to} adresine başarıyla gönderildi."];
 }
+}
 
 if ($action === 'rfq') {
     $settings = getDbData($settingsFile, $defaultSettings);
     $defaultRfq = [
-        'whatsappNumber' => '905424086160',
+        'whatsappNumber' => '+905322153403',
         'notificationEmail' => 'info@poset.com',
         'showMonthlyConsumption' => true,
         'requireMonthlyConsumption' => false,

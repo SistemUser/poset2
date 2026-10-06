@@ -170,14 +170,12 @@ export const QuoteProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const fetchLiveRfqSettings = async () => {
       const endpoints = [
-        getApiEndpoint("api/admin.php?action=rfq"),
-        "/api/admin.php?action=rfq",
         getApiEndpoint("api/api.php?action=rfq"),
         "/api/api.php?action=rfq",
-        getApiEndpoint("api/admin/rfq"),
-        "/api/admin/rfq",
-        "/data/settings.json",
-        getApiEndpoint("data/settings.json")
+        getApiEndpoint("api/api.php?action=settings"),
+        "/api/api.php?action=settings",
+        getApiEndpoint("api/admin.php?action=rfq"),
+        "/api/admin.php?action=rfq"
       ];
       for (const ep of endpoints) {
         try {

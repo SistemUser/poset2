@@ -43,7 +43,8 @@
   # Route /api/quote requests directly to api/quote.php
   RewriteRule ^api/quote(/.*)?$ api/quote.php [QSA,L]
 
-  # Fallback any other /api/* requests to api/api.php
+  # Fallback any other /api/* requests to api/api.php if file does not exist
+  RewriteCond %{REQUEST_FILENAME} !-f
   RewriteRule ^api/(.*)$ api/api.php?action=$1 [QSA,L]
 
   # SPA Routing: Redirect all non-file non-directory requests to index.html

@@ -277,7 +277,7 @@ export interface RfqSettings {
 }
 
 export const DEFAULT_RFQ_SETTINGS: RfqSettings = {
-  whatsappNumber: '905424086160',
+  whatsappNumber: '+905322153403',
   notificationEmail: 'info@poset.com',
   showMonthlyConsumption: true,
   requireMonthlyConsumption: false,

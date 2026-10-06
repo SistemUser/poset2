@@ -230,22 +230,24 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
   useEffect(() => {
     const fetchRfq = async () => {
       const endpoints = [
-        getApiEndpoint("api/admin.php?action=rfq"),
-        "/api/admin.php?action=rfq",
-        getApiEndpoint("api/admin/rfq"),
-        "/api/admin/rfq",
         getApiEndpoint("api/api.php?action=rfq"),
-        "/api/api.php?action=rfq"
+        "/api/api.php?action=rfq",
+        getApiEndpoint("api/api.php?action=settings"),
+        "/api/api.php?action=settings",
+        getApiEndpoint("api/admin.php?action=rfq"),
+        "/api/admin.php?action=rfq"
       ];
       for (const ep of endpoints) {
         try {
-          const res = await fetch(ep);
+          const sep = ep.includes("?") ? "&" : "?";
+          const res = await fetch(`${ep}${sep}t=${Date.now()}`);
           const text = await res.text();
           if (text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
             const data = JSON.parse(text);
-            if (data?.success && data?.rfq) {
-              setRfqSettings(prev => ({ ...prev, ...data.rfq }));
-              localStorage.setItem("poset_rfq_settings", JSON.stringify({ ...DEFAULT_RFQ_SETTINGS, ...data.rfq }));
+            const rfq = data?.rfq || (data?.success && data?.rfq ? data.rfq : null);
+            if (rfq && rfq.whatsappNumber) {
+              setRfqSettings(prev => ({ ...prev, ...rfq }));
+              localStorage.setItem("poset_rfq_settings", JSON.stringify({ ...DEFAULT_RFQ_SETTINGS, ...rfq }));
               break;
             }
           }
@@ -263,23 +265,34 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
       window.dispatchEvent(new Event("rfq_settings_updated"));
 
       const endpoints = [
-        getApiEndpoint("api/admin.php?action=rfq"),
-        "/api/admin.php?action=rfq",
-        getApiEndpoint("api/admin/rfq"),
-        "/api/admin/rfq",
         getApiEndpoint("api/api.php?action=rfq"),
-        "/api/api.php?action=rfq"
+        "/api/api.php?action=rfq",
+        getApiEndpoint("api/admin.php?action=rfq"),
+        "/api/admin.php?action=rfq"
       ];
+      let savedOnServer = false;
       for (const ep of endpoints) {
         try {
-          await fetch(ep, {
+          const res = await fetch(ep, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "rfq", ...rfqSettings })
           });
+          const text = await res.text();
+          if (text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
+            const data = JSON.parse(text);
+            if (data?.success) {
+              savedOnServer = true;
+              break;
+            }
+          }
         } catch (e) {}
       }
-      triggerToast("✓ Teklif Formu & İletişim Ayarları başarıyla kaydedildi.");
+      if (savedOnServer) {
+        triggerToast("✓ Teklif Formu & İletişim Ayarları başarıyla sunucuya kaydedildi.");
+      } else {
+        triggerToast("⚠️ Ayarlar yerel olarak kaydedildi, sunucuya aktarılamadı.");
+      }
     } catch (err) {
       alert("Ayarlar kaydedilirken hata oluştu.");
     } finally {
@@ -304,22 +317,24 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
   useEffect(() => {
     const fetchSmtp = async () => {
       const endpoints = [
-        getApiEndpoint("api/admin.php?action=smtp"),
-        "/api/admin.php?action=smtp",
-        getApiEndpoint("api/admin/smtp"),
-        "/api/admin/smtp",
         getApiEndpoint("api/api.php?action=smtp"),
-        "/api/api.php?action=smtp"
+        "/api/api.php?action=smtp",
+        getApiEndpoint("api/api.php?action=settings"),
+        "/api/api.php?action=settings",
+        getApiEndpoint("api/admin.php?action=smtp"),
+        "/api/admin.php?action=smtp"
       ];
       for (const ep of endpoints) {
         try {
-          const res = await fetch(ep);
+          const sep = ep.includes("?") ? "&" : "?";
+          const res = await fetch(`${ep}${sep}t=${Date.now()}`);
           const text = await res.text();
           if (text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
             const data = JSON.parse(text);
-            if (data?.success && data?.smtp) {
-              setSmtpSettings(prev => ({ ...prev, ...data.smtp }));
-              localStorage.setItem("poset_smtp_settings", JSON.stringify({ ...DEFAULT_SMTP_SETTINGS, ...data.smtp }));
+            const smtp = data?.smtp || (data?.success && data?.smtp ? data.smtp : null);
+            if (smtp && smtp.host) {
+              setSmtpSettings(prev => ({ ...prev, ...smtp }));
+              localStorage.setItem("poset_smtp_settings", JSON.stringify({ ...DEFAULT_SMTP_SETTINGS, ...smtp }));
               break;
             }
           }
@@ -336,12 +351,10 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
     try {
       localStorage.setItem("poset_smtp_settings", JSON.stringify(smtpSettings));
       const endpoints = [
-        getApiEndpoint("api/admin.php?action=smtp"),
-        "/api/admin.php?action=smtp",
-        getApiEndpoint("api/admin/smtp"),
-        "/api/admin/smtp",
         getApiEndpoint("api/api.php?action=smtp"),
-        "/api/api.php?action=smtp"
+        "/api/api.php?action=smtp",
+        getApiEndpoint("api/admin.php?action=smtp"),
+        "/api/admin.php?action=smtp"
       ];
       let savedOnServer = false;
       for (const ep of endpoints) {
@@ -362,7 +375,7 @@ export default function AdminPanel({ onBackToSite, onSettingsUpdated }: AdminPan
         } catch (e) {}
       }
       if (savedOnServer) {
-        triggerToast("✓ Mail sunucu (SMTP) ayarları başarıyla kaydedildi.");
+        triggerToast("✓ Mail sunucu (SMTP) ayarları başarıyla sunucuya kaydedildi.");
       } else {
         triggerToast("✓ Mail ayarları yerel olarak kaydedildi.");
       }
